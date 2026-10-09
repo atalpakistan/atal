@@ -1,0 +1,150 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Store item available for purchase",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "description": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "categoryName": { "type": "string" },
+        "subcategoryId": { "type": "string" },
+        "brand": { "type": "string" },
+        "price": { "type": "number" },
+        "compareAtPrice": { "type": "number" },
+        "images": { "type": "array" },
+        "thumbnail": { "type": "string" },
+        "sku": { "type": "string" },
+        "stock": { "type": "number" },
+        "rating": { "type": "number" },
+        "reviewCount": { "type": "number" },
+        "tags": { "type": "array" },
+        "featured": { "type": "boolean" },
+        "bestSeller": { "type": "boolean" },
+        "newArrival": { "type": "boolean" },
+        "active": { "type": "boolean" },
+        "variations": { "type": "array" },
+        "specifications": { "type": "array" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "name", "price"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Store product category",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "description": { "type": "string" },
+        "image": { "type": "string" },
+        "active": { "type": "boolean" },
+        "subcategories": { "type": "array" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "name", "slug"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer order details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orderNumber": { "type": "string" },
+        "customerName": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "shippingAddress": { "type": "object" },
+        "items": { "type": "array" },
+        "subtotal": { "type": "number" },
+        "shipping": { "type": "number" },
+        "discount": { "type": "number" },
+        "total": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "paymentStatus": { "type": "string" },
+        "orderStatus": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "orderNumber", "total", "items"]
+    },
+    "CarouselSlide": {
+      "title": "CarouselSlide",
+      "description": "Storefront carousel highlight slide",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "productId": { "type": "string" },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "badge": { "type": "string" },
+        "badgeColor": { "type": "string" },
+        "description": { "type": "string" },
+        "priceTag": { "type": "string" },
+        "originalPrice": { "type": "number" },
+        "discountPrice": { "type": "number" },
+        "discountTag": { "type": "string" },
+        "buttonText": { "type": "string" },
+        "buttonLink": { "type": "string" },
+        "image": { "type": "string" },
+        "bgGradient": { "type": "string" },
+        "active": { "type": "boolean" },
+        "order": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "title", "image"]
+    },
+    "SpotlightBanner": {
+      "title": "SpotlightBanner",
+      "description": "Homepage promotional spotlight hardware banner",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "badge": { "type": "string" },
+        "badgeColor": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "compareAtPrice": { "type": "number" },
+        "discountTag": { "type": "string" },
+        "primaryButtonText": { "type": "string" },
+        "primaryButtonLink": { "type": "string" },
+        "secondaryButtonText": { "type": "string" },
+        "secondaryButtonLink": { "type": "string" },
+        "image": { "type": "string" },
+        "active": { "type": "boolean" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "title", "price", "image"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Catalog of all store products"
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Catalog product categories"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Customer placement and fulfillment orders"
+    },
+    "/carousel_slides/{slideId}": {
+      "schema": "CarouselSlide",
+      "description": "Storefront promotional carousel slides"
+    },
+    "/settings/{settingId}": {
+      "schema": "SpotlightBanner",
+      "description": "Store configurations and promotional spotlight hardware banner"
+    }
+  }
+}
