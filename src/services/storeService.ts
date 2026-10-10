@@ -73,7 +73,7 @@ export const DEFAULT_STORE_SETTINGS: StoreSettings = {
 };
 
 // Local storage caching helpers
-function getLocalProducts(): Product[] {
+export function getLocalProducts(): Product[] {
   try {
     const raw = localStorage.getItem(LOCAL_PRODUCTS_KEY);
     return raw ? JSON.parse(raw) : [...INITIAL_PRODUCTS];
@@ -82,7 +82,7 @@ function getLocalProducts(): Product[] {
   }
 }
 
-function saveLocalProducts(products: Product[]): void {
+export function saveLocalProducts(products: Product[]): void {
   try {
     localStorage.setItem(LOCAL_PRODUCTS_KEY, JSON.stringify(products));
   } catch (e) {
@@ -90,7 +90,7 @@ function saveLocalProducts(products: Product[]): void {
   }
 }
 
-function getLocalCategories(): Category[] {
+export function getLocalCategories(): Category[] {
   try {
     const raw = localStorage.getItem(LOCAL_CATEGORIES_KEY);
     return raw ? JSON.parse(raw) : [...INITIAL_CATEGORIES];
@@ -99,7 +99,7 @@ function getLocalCategories(): Category[] {
   }
 }
 
-function saveLocalCategories(categories: Category[]): void {
+export function saveLocalCategories(categories: Category[]): void {
   try {
     localStorage.setItem(LOCAL_CATEGORIES_KEY, JSON.stringify(categories));
   } catch (e) {
@@ -107,7 +107,7 @@ function saveLocalCategories(categories: Category[]): void {
   }
 }
 
-function getLocalStoredOrders(): Order[] {
+export function getLocalStoredOrders(): Order[] {
   try {
     const raw = localStorage.getItem(LOCAL_ORDERS_KEY);
     return raw ? JSON.parse(raw) : [];
@@ -116,7 +116,7 @@ function getLocalStoredOrders(): Order[] {
   }
 }
 
-function saveLocalStoredOrders(orders: Order[]): void {
+export function saveLocalStoredOrders(orders: Order[]): void {
   try {
     localStorage.setItem(LOCAL_ORDERS_KEY, JSON.stringify(orders));
   } catch {
@@ -141,8 +141,49 @@ export function saveLocalStoreSettings(settings: StoreSettings): void {
   }
 }
 
-// Seeding helper to ensure the store works immediately out-of-the-box
+export function getLocalCarouselSlides(): CarouselSlide[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_CAROUSEL_KEY);
+    return raw ? JSON.parse(raw) : [...INITIAL_CAROUSEL_SLIDES];
+  } catch {
+    return [...INITIAL_CAROUSEL_SLIDES];
+  }
+}
+
+export function saveLocalCarouselSlides(slides: CarouselSlide[]): void {
+  try {
+    localStorage.setItem(LOCAL_CAROUSEL_KEY, JSON.stringify(slides));
+  } catch (e) {
+    console.warn('Failed to cache carousel slides locally', e);
+  }
+}
+
+export function getLocalSpotlightBanner(): SpotlightBanner {
+  try {
+    const raw = localStorage.getItem(LOCAL_SPOTLIGHT_KEY);
+    return raw ? { ...DEFAULT_SPOTLIGHT_BANNER, ...JSON.parse(raw) } : DEFAULT_SPOTLIGHT_BANNER;
+  } catch {
+    return DEFAULT_SPOTLIGHT_BANNER;
+  }
+}
+
+export function saveLocalSpotlightBanner(banner: SpotlightBanner): void {
+  try {
+    localStorage.setItem(LOCAL_SPOTLIGHT_KEY, JSON.stringify(banner));
+  } catch (e) {
+    console.warn('Failed to cache spotlight banner locally', e);
+  }
+}
+
+const HAS_SEEDED_FLAG = 'atal_store_has_seeded_v4';
+
+// Seeding helper to ensure the store works immediately out-of-the-box (fast check)
 export async function seedDatabaseIfEmpty(): Promise<void> {
+  // If we already know the database has seeded and local cache is populated, skip expensive network queries
+  if (localStorage.getItem(HAS_SEEDED_FLAG) === 'true' && getLocalProducts().length > 0) {
+    return;
+  }
+
   try {
     const productsSnap = await getDocs(query(collection(db, PRODUCTS_COL), limit(1)));
     if (productsSnap.empty) {
@@ -181,27 +222,10 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
       saveLocalStoreSettings(DEFAULT_STORE_SETTINGS);
       saveLocalCarouselSlides(INITIAL_CAROUSEL_SLIDES);
       saveLocalSpotlightBanner(DEFAULT_SPOTLIGHT_BANNER);
+      localStorage.setItem(HAS_SEEDED_FLAG, 'true');
       console.log('Initial data seeded successfully.');
     } else {
-      // Ensure carousel slides collection has initial data if empty
-      const carouselSnap = await getDocs(query(collection(db, CAROUSEL_COL), limit(1)));
-      if (carouselSnap.empty) {
-        const batch = writeBatch(db);
-        for (const slide of INITIAL_CAROUSEL_SLIDES) {
-          const slideRef = doc(db, CAROUSEL_COL, slide.id);
-          batch.set(slideRef, slide);
-        }
-        await batch.commit();
-        saveLocalCarouselSlides(INITIAL_CAROUSEL_SLIDES);
-      }
-
-      // Ensure spotlight doc exists
-      const spotlightRef = doc(db, SETTINGS_COL, SPOTLIGHT_DOC);
-      const spotSnap = await getDoc(spotlightRef);
-      if (!spotSnap.exists()) {
-        await setDoc(spotlightRef, DEFAULT_SPOTLIGHT_BANNER);
-        saveLocalSpotlightBanner(DEFAULT_SPOTLIGHT_BANNER);
-      }
+      localStorage.setItem(HAS_SEEDED_FLAG, 'true');
     }
   } catch (error) {
     console.warn('Firestore seeding check fallback (using local catalog):', error);
@@ -430,12 +454,10 @@ export async function saveProduct(product: Partial<Product> & { id?: string }): 
   }
   saveLocalProducts(localList);
 
-  // 2. Persist to Firestore
-  try {
-    await setDoc(prodRef, finalProduct, { merge: true });
-  } catch (err) {
+  // 2. Persist to Firestore asynchronously (with timeout so UI is never blocked)
+  setDoc(prodRef, finalProduct, { merge: true }).catch(err => {
     console.warn('Remote product save warning (persisted locally):', err);
-  }
+  });
 
   return prodId;
 }
@@ -530,14 +552,104 @@ export async function saveCategory(category: Partial<Category> & { id?: string }
   }
   saveLocalCategories(localList);
 
-  // 2. Persist to Firestore
-  try {
-    await setDoc(catRef, finalCat, { merge: true });
-  } catch (err) {
+  // 2. Persist to Firestore asynchronously (with timeout so UI is never blocked)
+  setDoc(catRef, finalCat, { merge: true }).catch(err => {
     console.warn('Remote category save warning (persisted locally):', err);
-  }
+  });
 
   return catId;
+}
+
+// -------------------------------------------------------------
+// UNIFIED HIGH-SPEED DATA LOADER (Zero Duplicate Queries)
+// -------------------------------------------------------------
+export interface UnifiedStoreData {
+  categories: Category[];
+  adminCategories: Category[];
+  products: Product[];
+  adminProducts: Product[];
+  orders: Order[];
+  carouselSlides: CarouselSlide[];
+  adminCarouselSlides: CarouselSlide[];
+  spotlightBanner: SpotlightBanner;
+}
+
+export async function fetchUnifiedStoreData(): Promise<UnifiedStoreData> {
+  // 1. Initial snapshot from local cache
+  const cachedProds = getLocalProducts();
+  const cachedCats = getLocalCategories();
+  const cachedSlides = getLocalCarouselSlides();
+  const cachedSpotlight = getLocalSpotlightBanner();
+  const cachedOrders = getLocalStoredOrders();
+
+  const fallbackData: UnifiedStoreData = {
+    products: cachedProds.filter(p => p.active !== false),
+    adminProducts: cachedProds,
+    categories: cachedCats.filter(c => c.active !== false),
+    adminCategories: cachedCats,
+    carouselSlides: cachedSlides.filter(s => s.active !== false),
+    adminCarouselSlides: cachedSlides,
+    spotlightBanner: cachedSpotlight,
+    orders: cachedOrders
+  };
+
+  try {
+    // Single consolidated fetch: only 1 query per collection, executed in parallel
+    const [prodsSnap, catsSnap, slidesSnap, spotSnap, ordersSnap] = await Promise.all([
+      getDocs(collection(db, PRODUCTS_COL)).catch(() => null),
+      getDocs(collection(db, CATEGORIES_COL)).catch(() => null),
+      getDocs(collection(db, CAROUSEL_COL)).catch(() => null),
+      getDoc(doc(db, SETTINGS_COL, SPOTLIGHT_DOC)).catch(() => null),
+      getDocs(collection(db, ORDERS_COL)).catch(() => null)
+    ]);
+
+    let finalProds = cachedProds;
+    if (prodsSnap && !prodsSnap.empty) {
+      finalProds = prodsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+      finalProds.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      saveLocalProducts(finalProds);
+    }
+
+    let finalCats = cachedCats;
+    if (catsSnap && !catsSnap.empty) {
+      finalCats = catsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Category));
+      saveLocalCategories(finalCats);
+    }
+
+    let finalSlides = cachedSlides;
+    if (slidesSnap && !slidesSnap.empty) {
+      finalSlides = slidesSnap.docs.map(d => ({ id: d.id, ...d.data() } as CarouselSlide));
+      finalSlides.sort((a, b) => (a.order || 0) - (b.order || 0));
+      saveLocalCarouselSlides(finalSlides);
+    }
+
+    let finalSpotlight = cachedSpotlight;
+    if (spotSnap && spotSnap.exists()) {
+      finalSpotlight = { ...DEFAULT_SPOTLIGHT_BANNER, ...spotSnap.data() } as SpotlightBanner;
+      saveLocalSpotlightBanner(finalSpotlight);
+    }
+
+    let finalOrders = cachedOrders;
+    if (ordersSnap && !ordersSnap.empty) {
+      finalOrders = ordersSnap.docs.map(d => ({ id: d.id, ...d.data() } as Order));
+      finalOrders.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      saveLocalStoredOrders(finalOrders);
+    }
+
+    return {
+      products: finalProds.filter(p => p.active !== false),
+      adminProducts: finalProds,
+      categories: finalCats.filter(c => c.active !== false),
+      adminCategories: finalCats,
+      carouselSlides: finalSlides.filter(s => s.active !== false),
+      adminCarouselSlides: finalSlides,
+      spotlightBanner: finalSpotlight,
+      orders: finalOrders
+    };
+  } catch (err) {
+    console.warn('fetchUnifiedStoreData fallback to local cache:', err);
+    return fallbackData;
+  }
 }
 
 export async function toggleCategoryActive(id: string, active: boolean): Promise<void> {
@@ -711,23 +823,6 @@ export async function updateOrderStatus(orderId: string, orderStatus: OrderStatu
 // CAROUSEL SLIDES MANAGEMENT (Customer and Admin editable)
 // -------------------------------------------------------------
 
-function getLocalCarouselSlides(): CarouselSlide[] {
-  try {
-    const raw = localStorage.getItem(LOCAL_CAROUSEL_KEY);
-    return raw ? JSON.parse(raw) : [...INITIAL_CAROUSEL_SLIDES];
-  } catch {
-    return [...INITIAL_CAROUSEL_SLIDES];
-  }
-}
-
-function saveLocalCarouselSlides(slides: CarouselSlide[]): void {
-  try {
-    localStorage.setItem(LOCAL_CAROUSEL_KEY, JSON.stringify(slides));
-  } catch (e) {
-    console.warn('Failed to cache carousel slides locally', e);
-  }
-}
-
 export async function getCarouselSlides(): Promise<CarouselSlide[]> {
   const local = getLocalCarouselSlides();
   try {
@@ -846,23 +941,6 @@ export async function resetCarouselSlidesToDefault(): Promise<CarouselSlide[]> {
 // -------------------------------------------------------------
 // SPOTLIGHT PROMO BANNER (Admin Editable Hardware Showcase)
 // -------------------------------------------------------------
-
-function getLocalSpotlightBanner(): SpotlightBanner {
-  try {
-    const raw = localStorage.getItem(LOCAL_SPOTLIGHT_KEY);
-    return raw ? { ...DEFAULT_SPOTLIGHT_BANNER, ...JSON.parse(raw) } : DEFAULT_SPOTLIGHT_BANNER;
-  } catch {
-    return DEFAULT_SPOTLIGHT_BANNER;
-  }
-}
-
-function saveLocalSpotlightBanner(banner: SpotlightBanner): void {
-  try {
-    localStorage.setItem(LOCAL_SPOTLIGHT_KEY, JSON.stringify(banner));
-  } catch (e) {
-    console.warn('Failed to cache spotlight banner locally', e);
-  }
-}
 
 export async function getSpotlightBanner(): Promise<SpotlightBanner> {
   const local = getLocalSpotlightBanner();

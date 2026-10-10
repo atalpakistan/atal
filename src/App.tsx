@@ -22,14 +22,12 @@ import { CartProvider } from './context/CartContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import {
   seedDatabaseIfEmpty,
-  getProducts,
-  getAllAdminProducts,
-  getCategories,
-  getAllAdminCategories,
-  getOrders,
-  getCarouselSlides,
-  getAllAdminCarouselSlides,
-  getSpotlightBanner,
+  fetchUnifiedStoreData,
+  getLocalCategories,
+  getLocalProducts,
+  getLocalCarouselSlides,
+  getLocalSpotlightBanner,
+  getLocalStoredOrders,
   DEFAULT_SPOTLIGHT_BANNER,
   subscribeToCarouselSlides,
   subscribeToSpotlightBanner,
@@ -52,48 +50,50 @@ function MainApp() {
   const [customerAuthModalOpen, setCustomerAuthModalOpen] = useState(false);
   const [customerAuthMode, setCustomerAuthMode] = useState<'login' | 'register' | 'track' | 'orders'>('login');
 
-  // Data states
-  const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
-  const [adminCategories, setAdminCategories] = useState<Category[]>(INITIAL_CATEGORIES);
-  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
-  const [adminProducts, setAdminProducts] = useState<Product[]>(INITIAL_PRODUCTS);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [carouselSlides, setCarouselSlides] = useState<CarouselSlide[]>(INITIAL_CAROUSEL_SLIDES);
-  const [adminCarouselSlides, setAdminCarouselSlides] = useState<CarouselSlide[]>(INITIAL_CAROUSEL_SLIDES);
-  const [spotlightBanner, setSpotlightBanner] = useState<SpotlightBanner>(DEFAULT_SPOTLIGHT_BANNER);
-  const [loading, setLoading] = useState(true);
+  // Instant zero-delay data states initialized from local disk cache
+  const [categories, setCategories] = useState<Category[]>(() => {
+    const list = getLocalCategories();
+    return list && list.length > 0 ? list.filter(c => c.active !== false) : INITIAL_CATEGORIES;
+  });
+  const [adminCategories, setAdminCategories] = useState<Category[]>(() => {
+    const list = getLocalCategories();
+    return list && list.length > 0 ? list : INITIAL_CATEGORIES;
+  });
+  const [products, setProducts] = useState<Product[]>(() => {
+    const list = getLocalProducts();
+    return list && list.length > 0 ? list.filter(p => p.active !== false) : INITIAL_PRODUCTS;
+  });
+  const [adminProducts, setAdminProducts] = useState<Product[]>(() => {
+    const list = getLocalProducts();
+    return list && list.length > 0 ? list : INITIAL_PRODUCTS;
+  });
+  const [orders, setOrders] = useState<Order[]>(() => getLocalStoredOrders());
+  const [carouselSlides, setCarouselSlides] = useState<CarouselSlide[]>(() => {
+    const list = getLocalCarouselSlides();
+    return list && list.length > 0 ? list.filter(s => s.active !== false) : INITIAL_CAROUSEL_SLIDES;
+  });
+  const [adminCarouselSlides, setAdminCarouselSlides] = useState<CarouselSlide[]>(() => {
+    const list = getLocalCarouselSlides();
+    return list && list.length > 0 ? list : INITIAL_CAROUSEL_SLIDES;
+  });
+  const [spotlightBanner, setSpotlightBanner] = useState<SpotlightBanner>(() => getLocalSpotlightBanner());
+  const [loading, setLoading] = useState(false);
 
-  // Load data: Customer view gets active items; Admin gets complete inventory
+  // Load data: Single unified parallel pass with zero duplicates and non-blocking background seeding
   const loadData = useCallback(async () => {
     try {
-      await seedDatabaseIfEmpty();
-      const [fetchedCats, fetchedProds, fetchedAdminCats, fetchedAdminProds, fetchedOrders, fetchedSlides, fetchedAdminSlides, fetchedSpotlight] = await Promise.all([
-        getCategories(),
-        getProducts(),
-        getAllAdminCategories(),
-        getAllAdminProducts(),
-        getOrders(),
-        getCarouselSlides(),
-        getAllAdminCarouselSlides(),
-        getSpotlightBanner()
-      ]);
+      // Background non-blocking seed verification
+      seedDatabaseIfEmpty().catch(() => {});
+      const data = await fetchUnifiedStoreData();
 
-      if (fetchedCats) setCategories(fetchedCats);
-      if (fetchedProds) setProducts(fetchedProds);
-      if (fetchedAdminCats) setAdminCategories(fetchedAdminCats);
-      if (fetchedAdminProds) setAdminProducts(fetchedAdminProds);
-      if (fetchedOrders) setOrders(fetchedOrders);
-      if (fetchedSlides && fetchedSlides.length > 0) {
-        setCarouselSlides(fetchedSlides);
-      } else if (fetchedSlides) {
-        setCarouselSlides(fetchedSlides);
-      }
-      if (fetchedAdminSlides && fetchedAdminSlides.length > 0) {
-        setAdminCarouselSlides(fetchedAdminSlides);
-      } else if (fetchedAdminSlides) {
-        setAdminCarouselSlides(fetchedAdminSlides);
-      }
-      if (fetchedSpotlight) setSpotlightBanner(fetchedSpotlight);
+      if (data.categories && data.categories.length > 0) setCategories(data.categories);
+      if (data.adminCategories && data.adminCategories.length > 0) setAdminCategories(data.adminCategories);
+      if (data.products && data.products.length > 0) setProducts(data.products);
+      if (data.adminProducts && data.adminProducts.length > 0) setAdminProducts(data.adminProducts);
+      if (data.orders) setOrders(data.orders);
+      if (data.carouselSlides && data.carouselSlides.length > 0) setCarouselSlides(data.carouselSlides);
+      if (data.adminCarouselSlides && data.adminCarouselSlides.length > 0) setAdminCarouselSlides(data.adminCarouselSlides);
+      if (data.spotlightBanner) setSpotlightBanner(data.spotlightBanner);
     } catch (err) {
       console.warn('Initial data load gracefully handled fallback:', err);
     } finally {

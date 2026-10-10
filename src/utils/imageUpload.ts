@@ -87,7 +87,7 @@ export function getImageFormatInfo(src?: string, sectionType: 'carousel' | 'spot
   };
 }
 
-export async function processImageFile(file: File, maxWidth = 1200, maxHeight = 1200, quality = 0.85): Promise<string> {
+export async function processImageFile(file: File, maxWidth = 750, maxHeight = 750, quality = 0.75): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith('image/')) {
       reject(new Error('Selected file is not an image.'));
@@ -101,6 +101,7 @@ export async function processImageFile(file: File, maxWidth = 1200, maxHeight = 
         let width = img.width;
         let height = img.height;
 
+        // Scale down proportionally to optimal web display dimensions
         if (width > maxWidth || height > maxHeight) {
           if (width / height > maxWidth / maxHeight) {
             height = Math.round((height * maxWidth) / width);
@@ -120,13 +121,40 @@ export async function processImageFile(file: File, maxWidth = 1200, maxHeight = 
           return;
         }
 
+        // Clean white background for transparent images to avoid black artifacts in JPEG/WebP
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
 
+        // Try WebP first for ultra-lightweight size (up to 70% smaller than JPG)
         try {
-          const dataUrl = canvas.toDataURL('image/jpeg', quality);
+          let dataUrl = canvas.toDataURL('image/webp', quality);
+          // If browser doesn't support WebP or returned PNG fallback, use optimized JPEG
+          if (!dataUrl.startsWith('data:image/webp')) {
+            dataUrl = canvas.toDataURL('image/jpeg', quality);
+          }
+
+          // Safety check: if dataURL is still > 100KB, do a quick further reduction
+          if (dataUrl.length > 130000) {
+            const smallerCanvas = document.createElement('canvas');
+            smallerCanvas.width = Math.round(width * 0.8);
+            smallerCanvas.height = Math.round(height * 0.8);
+            const sCtx = smallerCanvas.getContext('2d');
+            if (sCtx) {
+              sCtx.fillStyle = '#FFFFFF';
+              sCtx.fillRect(0, 0, smallerCanvas.width, smallerCanvas.height);
+              sCtx.drawImage(canvas, 0, 0, smallerCanvas.width, smallerCanvas.height);
+              dataUrl = smallerCanvas.toDataURL('image/jpeg', 0.68);
+            }
+          }
+
           resolve(dataUrl);
         } catch {
-          resolve(event.target?.result as string);
+          try {
+            resolve(canvas.toDataURL('image/jpeg', 0.72));
+          } catch {
+            resolve(event.target?.result as string);
+          }
         }
       };
 

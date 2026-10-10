@@ -346,6 +346,38 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
+        {/* ONE-LINE CATEGORIES BAR (PC, ANDROID & TABLET IN ONE LINE) */}
+        <div className="border-t border-stone-100 bg-stone-50/80 backdrop-blur-xs">
+          <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-none py-2 scroll-smooth text-xs whitespace-nowrap">
+              <button
+                type="button"
+                onClick={() => onNavigate('shop', 'all')}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-700 text-white font-bold shadow-2xs cursor-pointer hover:bg-emerald-800 transition shrink-0 text-[11px] sm:text-xs"
+              >
+                <span>All Departments</span>
+              </button>
+              {categories.map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => onNavigate('shop', cat.id)}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-stone-200/90 text-stone-700 hover:text-emerald-800 hover:border-emerald-400 font-semibold transition shrink-0 cursor-pointer shadow-2xs hover:bg-emerald-50/60 text-[11px] sm:text-xs"
+                >
+                  {cat.image && (
+                    <img
+                      src={cat.image}
+                      alt={cat.name}
+                      className="w-4 h-4 rounded-full object-cover border border-stone-200"
+                    />
+                  )}
+                  <span>{cat.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
         {/* Mobile Navigation Drawer */}
         {mobileMenuOpen && (
           <div className="lg:hidden border-t border-stone-200 bg-white px-5 py-6 space-y-4 shadow-xl">

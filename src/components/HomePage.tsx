@@ -85,6 +85,14 @@ export const HomePage: React.FC<HomePageProps> = ({
     setCurrentSlide((prev) => (prev + 1) % slidesToRender.length);
   };
 
+  // Horizontal one-line scroll controls for categories
+  const categoryRowRef = useRef<HTMLDivElement | null>(null);
+  const scrollCategoryRow = (amount: number) => {
+    if (categoryRowRef.current) {
+      categoryRowRef.current.scrollBy({ left: amount, behavior: 'smooth' });
+    }
+  };
+
   return (
     <div className="space-y-12 sm:space-y-16 pb-20 overflow-hidden">
       {/* 1. HERO SECTION (REDUCED SLEEK HEIGHT, LIGHT GREEN THEME) */}
@@ -376,50 +384,87 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
       </section>
 
-      {/* 3. SHOP BY CATEGORY */}
+      {/* 3. SHOP BY CATEGORY: ONE LINE ON PC, ANDROID & TABLET */}
       <section className="max-w-[1720px] mx-auto px-3 sm:px-6 lg:px-8">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-5 sm:mb-7">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-3 sm:mb-5">
           <div>
-            <span className="text-xs uppercase tracking-widest font-bold text-stone-400">
-              Department Archives
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs uppercase tracking-widest font-bold text-emerald-800">
+                Department Archives
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 text-[10px] font-black">
+                {categories.length} Collections
+              </span>
+            </div>
             <h2 className="text-2xl sm:text-3xl font-bold font-serif-display text-stone-950 mt-0.5">
               Shop by Category
             </h2>
           </div>
-          <button
-            onClick={() => onNavigate('shop')}
-            className="mt-2 sm:mt-0 text-xs sm:text-sm font-semibold text-stone-900 hover:text-black flex items-center gap-1 group cursor-pointer"
-          >
-            <span>View All Departments</span>
-            <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-          </button>
+
+          <div className="flex items-center gap-2 mt-2 sm:mt-0">
+            {/* Horizontal Scroll Controls for PC & Tablet */}
+            <div className="flex items-center gap-1.5 mr-2">
+              <button
+                type="button"
+                onClick={() => scrollCategoryRow(-320)}
+                aria-label="Previous categories"
+                className="w-8 h-8 rounded-full border border-stone-200 bg-white hover:bg-emerald-50 hover:border-emerald-300 text-stone-700 hover:text-emerald-800 flex items-center justify-center transition cursor-pointer shadow-2xs"
+                title="Scroll Left"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollCategoryRow(320)}
+                aria-label="Next categories"
+                className="w-8 h-8 rounded-full border border-stone-200 bg-white hover:bg-emerald-50 hover:border-emerald-300 text-stone-700 hover:text-emerald-800 flex items-center justify-center transition cursor-pointer shadow-2xs"
+                title="Scroll Right"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            <button
+              onClick={() => onNavigate('shop')}
+              className="text-xs sm:text-sm font-semibold text-stone-900 hover:text-black flex items-center gap-1 group cursor-pointer"
+            >
+              <span>View All</span>
+              <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+            </button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
-          {categories.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => onNavigate('shop', cat.id)}
-              className="group relative flex flex-col text-left rounded-2xl overflow-hidden bg-white border border-stone-200/90 shadow-2xs hover:shadow-md transition-all duration-300 hover:-translate-y-1 cursor-pointer"
-            >
-              <div className="aspect-[4/5] w-full overflow-hidden bg-stone-100">
-                <img
-                  src={cat.image}
-                  alt={cat.name}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                />
-              </div>
-              <div className="p-3 bg-white">
-                <h3 className="text-xs sm:text-sm font-bold text-stone-900 group-hover:text-emerald-700 transition">
-                  {cat.name}
-                </h3>
-                <span className="text-[10px] sm:text-[11px] font-medium text-stone-500 mt-0.5 inline-flex items-center gap-1">
-                  Shop Now <ArrowRight className="w-3 h-3 text-stone-400" />
-                </span>
-              </div>
-            </button>
-          ))}
+        {/* SINGLE HORIZONTAL LINE FOR CATEGORIES ACROSS ALL PLATFORMS (PC, ANDROID, TABLET) */}
+        <div className="relative group/category-line">
+          <div
+            ref={categoryRowRef}
+            className="flex flex-nowrap items-stretch gap-3 sm:gap-4 overflow-x-auto scrollbar-none py-2 px-0.5 scroll-smooth snap-x snap-mandatory"
+          >
+            {categories.map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => onNavigate('shop', cat.id)}
+                className="flex-none snap-start w-32 sm:w-40 md:w-48 lg:w-52 group relative flex flex-col text-left rounded-2xl overflow-hidden bg-white border border-stone-200/90 shadow-2xs hover:shadow-md transition-all duration-300 hover:-translate-y-1 cursor-pointer"
+              >
+                <div className="aspect-[4/5] w-full overflow-hidden bg-stone-100">
+                  <img
+                    src={cat.image}
+                    alt={cat.name}
+                    loading="lazy"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                </div>
+                <div className="p-3 bg-white flex-1 flex flex-col justify-between">
+                  <h3 className="text-xs sm:text-sm font-bold text-stone-900 group-hover:text-emerald-700 transition line-clamp-1">
+                    {cat.name}
+                  </h3>
+                  <span className="text-[10px] sm:text-[11px] font-medium text-stone-500 mt-1 inline-flex items-center gap-1">
+                    Shop Now <ArrowRight className="w-3 h-3 text-stone-400 group-hover:translate-x-0.5 transition-transform" />
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 

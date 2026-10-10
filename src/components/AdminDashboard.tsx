@@ -96,9 +96,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Modals
   const [productModalOpen, setProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Partial<Product> | null>(null);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [productSavedMsg, setProductSavedMsg] = useState<string | null>(null);
 
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Partial<Category> | null>(null);
+  const [isSavingCategory, setIsSavingCategory] = useState(false);
+  const [categorySavedMsg, setCategorySavedMsg] = useState<string | null>(null);
 
   const [carouselModalOpen, setCarouselModalOpen] = useState(false);
   const [editingSlide, setEditingSlide] = useState<Partial<CarouselSlide> | null>(null);
@@ -267,17 +271,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
 
     try {
+      setIsSavingProduct(true);
+      setUploadError(null);
+
+      // Deep clone and clean variations (colors, sizes, quantities)
+      const cleanedVariations = (editingProduct.variations || []).map(v => ({
+        ...v,
+        stock: Number(v.stock) || 0,
+        price: v.price !== undefined ? Number(v.price) : undefined
+      }));
+
       await saveProduct({
         ...editingProduct,
         thumbnail: primaryImage,
-        images: allImages
+        images: allImages,
+        variations: cleanedVariations
       });
+
       setProductModalOpen(false);
       setEditingProduct(null);
+      setProductSavedMsg('Product saved to catalog successfully!');
+      setTimeout(() => setProductSavedMsg(null), 4000);
       onRefreshData();
     } catch (err: any) {
       console.error('Save product error:', err);
       setUploadError(err.message || 'Failed to save product');
+    } finally {
+      setIsSavingProduct(false);
     }
   };
 
@@ -304,7 +324,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  // Product Image Upload Handler
+  // Product Image Upload Handler with fast WebP/JPEG compression
   const handleProductImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0 || !editingProduct) return;
@@ -315,7 +335,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const newImages: string[] = [...(editingProduct.images || [])];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        const base64Data = await processImageFile(file, 1200, 1200, 0.85);
+        const base64Data = await processImageFile(file, 750, 750, 0.75);
         newImages.push(base64Data);
       }
 
@@ -365,18 +385,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     e.preventDefault();
     if (!editingCategory) return;
     if (!editingCategory.image) {
-      setUploadError('Please upload a cover image for this department.');
+      setUploadError('Please upload a cover image or enter an image URL for this department.');
       return;
     }
 
     try {
+      setIsSavingCategory(true);
+      setUploadError(null);
+
       await saveCategory(editingCategory);
       setCategoryModalOpen(false);
       setEditingCategory(null);
+      setCategorySavedMsg('Department saved successfully!');
+      setTimeout(() => setCategorySavedMsg(null), 4000);
       onRefreshData();
     } catch (err: any) {
       console.error('Save category error:', err);
       setUploadError(err.message || 'Failed to save category');
+    } finally {
+      setIsSavingCategory(false);
     }
   };
 
@@ -396,7 +423,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setUploadError(null);
 
     try {
-      const base64Data = await processImageFile(file, 1000, 1000, 0.85);
+      const base64Data = await processImageFile(file, 750, 750, 0.75);
       setEditingCategory({
         ...editingCategory,
         image: base64Data
@@ -908,6 +935,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
             </div>
 
+            {productSavedMsg && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{productSavedMsg}</span>
+              </div>
+            )}
+
             {/* Filter and Search Bar */}
             <div className="flex flex-col sm:flex-row gap-3 pt-2">
               <div className="relative flex-1">
@@ -1055,6 +1089,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <span>Add Department</span>
               </button>
             </div>
+
+            {categorySavedMsg && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{categorySavedMsg}</span>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {categories.map((c) => {
@@ -2382,10 +2423,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={isProcessingUpload}
-                  className="px-6 py-2 bg-stone-950 text-white rounded-xl font-bold cursor-pointer hover:bg-stone-800 disabled:opacity-50"
+                  disabled={isProcessingUpload || isSavingProduct}
+                  className="px-6 py-2.5 bg-stone-950 text-white rounded-xl font-bold cursor-pointer hover:bg-stone-800 disabled:opacity-50 flex items-center gap-2 shadow-sm"
                 >
-                  Save Product to Catalog
+                  {isSavingProduct && <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0" />}
+                  <span>{isSavingProduct ? 'Saving to Catalog...' : 'Save Product to Catalog'}</span>
                 </button>
               </div>
             </form>
@@ -2501,6 +2543,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     Upload a high-resolution department cover photo
                   </div>
                 )}
+                {/* Option to paste image URL directly */}
+                <div className="pt-2 border-t border-stone-200/80">
+                  <label className="block text-[11px] font-semibold text-stone-600 mb-1">Or Paste Direct Image Web URL</label>
+                  <input
+                    type="url"
+                    placeholder="https://images.unsplash.com/photo-..."
+                    value={editingCategory.image && !editingCategory.image.startsWith('data:') ? editingCategory.image : ''}
+                    onChange={(e) => setEditingCategory({ ...editingCategory, image: e.target.value.trim() })}
+                    className="w-full px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs"
+                  />
+                </div>
               </div>
 
               <div>
@@ -2524,10 +2577,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={isProcessingUpload}
-                  className="px-5 py-2 bg-stone-950 text-white rounded-xl font-bold cursor-pointer hover:bg-stone-800 disabled:opacity-50"
+                  disabled={isProcessingUpload || isSavingCategory}
+                  className="px-5 py-2.5 bg-stone-950 text-white rounded-xl font-bold cursor-pointer hover:bg-stone-800 disabled:opacity-50 flex items-center gap-2 shadow-sm"
                 >
-                  Save Department
+                  {isSavingCategory && <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0" />}
+                  <span>{isSavingCategory ? 'Saving Department...' : 'Save Department'}</span>
                 </button>
               </div>
             </form>
