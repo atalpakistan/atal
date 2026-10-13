@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   SlidersHorizontal,
   X,
@@ -33,9 +33,15 @@ export const ShopPage: React.FC<ShopPageProps> = ({
   const [selectedColor, setSelectedColor] = useState<string>('all');
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
+  // Sync when initialCategory prop changes from external navigation
+  useEffect(() => {
+    setSelectedCategory(initialCategory || 'all');
+    setSelectedSubcategory('all');
+  }, [initialCategory]);
+
   // Available subcategories based on current selected category
   const activeCategoryObj = useMemo(() => {
-    return categories.find(c => c.id === selectedCategory);
+    return categories.find(c => c.id === selectedCategory || c.slug === selectedCategory);
   }, [categories, selectedCategory]);
 
   const availableSubcategories = activeCategoryObj?.subcategories || [];
@@ -45,7 +51,12 @@ export const ShopPage: React.FC<ShopPageProps> = ({
     return allProducts.filter((product) => {
       // Category filter
       if (selectedCategory !== 'all' && selectedCategory !== 'new-arrivals' && selectedCategory !== 'best-sellers') {
-        if (product.categoryId !== selectedCategory) return false;
+        const matchesCat =
+          product.categoryId === selectedCategory ||
+          product.categoryName?.toLowerCase() === selectedCategory.toLowerCase() ||
+          (activeCategoryObj && product.categoryId === activeCategoryObj.id) ||
+          (activeCategoryObj && product.categoryName?.toLowerCase() === activeCategoryObj.name.toLowerCase());
+        if (!matchesCat) return false;
       }
       if (selectedCategory === 'new-arrivals' && !product.newArrival) return false;
       if (selectedCategory === 'best-sellers' && !product.bestSeller) return false;

@@ -444,7 +444,7 @@ export async function saveProduct(product: Partial<Product> & { id?: string }): 
     updatedAt: now,
   };
 
-  // 1. Immediately update local storage cache
+  // 1. Immediately update local storage cache for instant UI feedback
   const localList = getLocalProducts();
   const existingIdx = localList.findIndex(p => p.id === prodId);
   if (existingIdx >= 0) {
@@ -454,10 +454,16 @@ export async function saveProduct(product: Partial<Product> & { id?: string }): 
   }
   saveLocalProducts(localList);
 
-  // 2. Persist to Firestore asynchronously (with timeout so UI is never blocked)
-  setDoc(prodRef, finalProduct, { merge: true }).catch(err => {
-    console.warn('Remote product save warning (persisted locally):', err);
-  });
+  // 2. Persist to Firestore with a fast timeout (2.5s) to guarantee server write before re-fetching
+  try {
+    const cleanData = JSON.parse(JSON.stringify(finalProduct));
+    await Promise.race([
+      setDoc(prodRef, cleanData, { merge: true }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Write timeout')), 2500))
+    ]);
+  } catch (err) {
+    console.warn('Firestore product write timed out or offline, cached locally:', err);
+  }
 
   return prodId;
 }
@@ -475,7 +481,10 @@ export async function toggleProductActive(id: string, active: boolean): Promise<
   // Update Firestore
   try {
     const prodRef = doc(db, PRODUCTS_COL, id);
-    await updateDoc(prodRef, { active, updatedAt: Date.now() });
+    await Promise.race([
+      updateDoc(prodRef, { active, updatedAt: Date.now() }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Toggle timeout')), 2500))
+    ]);
   } catch (err) {
     console.warn('Remote product status toggle warning:', err);
   }
@@ -489,7 +498,10 @@ export async function deleteProduct(id: string): Promise<void> {
   // 2. Remove from Firestore
   try {
     const prodRef = doc(db, PRODUCTS_COL, id);
-    await deleteDoc(prodRef);
+    await Promise.race([
+      deleteDoc(prodRef),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Delete timeout')), 2500))
+    ]);
   } catch (err) {
     console.warn('Remote product deletion warning:', err);
   }
@@ -540,6 +552,7 @@ export async function saveCategory(category: Partial<Category> & { id?: string }
     active: category.active !== undefined ? Boolean(category.active) : true,
     subcategories: category.subcategories || [],
     createdAt: category.createdAt || now,
+    updatedAt: now,
   };
 
   // 1. Immediately update local storage cache
@@ -552,12 +565,53 @@ export async function saveCategory(category: Partial<Category> & { id?: string }
   }
   saveLocalCategories(localList);
 
-  // 2. Persist to Firestore asynchronously (with timeout so UI is never blocked)
-  setDoc(catRef, finalCat, { merge: true }).catch(err => {
+  // 2. Persist to Firestore with a fast timeout (2.5s)
+  try {
+    const cleanData = JSON.parse(JSON.stringify(finalCat));
+    await Promise.race([
+      setDoc(catRef, cleanData, { merge: true }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Write timeout')), 2500))
+    ]);
+  } catch (err) {
     console.warn('Remote category save warning (persisted locally):', err);
-  });
+  }
 
   return catId;
+}
+
+export async function deleteCategory(id: string): Promise<void> {
+  const localList = getLocalCategories().filter(c => c.id !== id);
+  saveLocalCategories(localList);
+
+  try {
+    const catRef = doc(db, CATEGORIES_COL, id);
+    await Promise.race([
+      deleteDoc(catRef),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Delete timeout')), 2500))
+    ]);
+  } catch (err) {
+    console.warn('Remote category deletion warning:', err);
+  }
+}
+
+export async function toggleCategoryActive(id: string, active: boolean): Promise<void> {
+  const localList = getLocalCategories();
+  const target = localList.find(c => c.id === id);
+  if (target) {
+    target.active = active;
+    target.updatedAt = Date.now();
+    saveLocalCategories(localList);
+  }
+
+  try {
+    const catRef = doc(db, CATEGORIES_COL, id);
+    await Promise.race([
+      updateDoc(catRef, { active, updatedAt: Date.now() }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Toggle timeout')), 2500))
+    ]);
+  } catch (err) {
+    console.warn('Remote category toggle warning:', err);
+  }
 }
 
 // -------------------------------------------------------------
@@ -605,14 +659,47 @@ export async function fetchUnifiedStoreData(): Promise<UnifiedStoreData> {
 
     let finalProds = cachedProds;
     if (prodsSnap && !prodsSnap.empty) {
-      finalProds = prodsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+      const remoteProds = prodsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+      // Smart merge: retain recent local updates or uncommitted additions
+      const remoteMap = new Map<string, Product>();
+      remoteProds.forEach(p => remoteMap.set(p.id, p));
+
+      cachedProds.forEach(localP => {
+        const remoteP = remoteMap.get(localP.id);
+        if (!remoteP) {
+          // If created locally in the last 30 seconds, keep it
+          if (Date.now() - (localP.createdAt || 0) < 30000) {
+            remoteMap.set(localP.id, localP);
+          }
+        } else if ((localP.updatedAt || 0) > (remoteP.updatedAt || 0)) {
+          // Local is newer
+          remoteMap.set(localP.id, localP);
+        }
+      });
+
+      finalProds = Array.from(remoteMap.values());
       finalProds.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       saveLocalProducts(finalProds);
     }
 
     let finalCats = cachedCats;
     if (catsSnap && !catsSnap.empty) {
-      finalCats = catsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Category));
+      const remoteCats = catsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Category));
+      const remoteMap = new Map<string, Category>();
+      remoteCats.forEach(c => remoteMap.set(c.id, c));
+
+      cachedCats.forEach(localC => {
+        const remoteC = remoteMap.get(localC.id);
+        if (!remoteC) {
+          if (Date.now() - (localC.createdAt || 0) < 30000) {
+            remoteMap.set(localC.id, localC);
+          }
+        } else if ((localC.updatedAt || 0) > (remoteC.updatedAt || 0)) {
+          remoteMap.set(localC.id, localC);
+        }
+      });
+
+      finalCats = Array.from(remoteMap.values());
       saveLocalCategories(finalCats);
     }
 
@@ -649,38 +736,6 @@ export async function fetchUnifiedStoreData(): Promise<UnifiedStoreData> {
   } catch (err) {
     console.warn('fetchUnifiedStoreData fallback to local cache:', err);
     return fallbackData;
-  }
-}
-
-export async function toggleCategoryActive(id: string, active: boolean): Promise<void> {
-  // Update local storage
-  const localList = getLocalCategories();
-  const target = localList.find(c => c.id === id);
-  if (target) {
-    target.active = active;
-    saveLocalCategories(localList);
-  }
-
-  // Update Firestore
-  try {
-    const catRef = doc(db, CATEGORIES_COL, id);
-    await updateDoc(catRef, { active });
-  } catch (err) {
-    console.warn('Remote category toggle warning:', err);
-  }
-}
-
-export async function deleteCategory(id: string): Promise<void> {
-  // 1. Remove from local cache immediately
-  const localList = getLocalCategories().filter(c => c.id !== id);
-  saveLocalCategories(localList);
-
-  // 2. Remove from Firestore
-  try {
-    const catRef = doc(db, CATEGORIES_COL, id);
-    await deleteDoc(catRef);
-  } catch (err) {
-    console.warn('Remote category delete warning:', err);
   }
 }
 

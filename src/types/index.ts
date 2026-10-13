@@ -58,6 +58,7 @@ export interface Category {
   active: boolean;
   subcategories?: string[];
   createdAt: number;
+  updatedAt?: number;
 }
 
 export interface CartItem {

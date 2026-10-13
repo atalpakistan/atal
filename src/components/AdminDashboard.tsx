@@ -261,13 +261,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!editingProduct) return;
 
     const primaryImage = editingProduct.thumbnail || editingProduct.images?.[0] || '';
-    const allImages = (editingProduct.images && editingProduct.images.length > 0)
-      ? editingProduct.images
+    let allImages = (editingProduct.images && editingProduct.images.length > 0)
+      ? [...editingProduct.images]
       : (primaryImage ? [primaryImage] : []);
 
-    if (allImages.length < 3) {
-      setUploadError(`Minimum 3 product pictures are required (Currently: ${allImages.length}/3). Please upload or add at least 3 photos to ensure complete showcase views.`);
+    if (allImages.length === 0) {
+      setUploadError('Please provide at least 1 product photo or thumbnail URL.');
       return;
+    }
+
+    // Auto-fill up to 3 showcase angles if 1 or 2 are provided so views never break
+    while (allImages.length < 3) {
+      allImages.push(allImages[0]);
     }
 
     try {
@@ -281,9 +286,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         price: v.price !== undefined ? Number(v.price) : undefined
       }));
 
+      // Ensure categoryName matches categoryId
+      const matchedCat = categories.find(c => c.id === editingProduct.categoryId);
+      const catName = matchedCat?.name || editingProduct.categoryName || 'General';
+
       await saveProduct({
         ...editingProduct,
-        thumbnail: primaryImage,
+        categoryId: editingProduct.categoryId || categories[0]?.id || 'cat-fashion',
+        categoryName: catName,
+        thumbnail: allImages[0],
         images: allImages,
         variations: cleanedVariations
       });
@@ -384,16 +395,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCategory) return;
-    if (!editingCategory.image) {
-      setUploadError('Please upload a cover image or enter an image URL for this department.');
-      return;
-    }
 
     try {
       setIsSavingCategory(true);
       setUploadError(null);
 
-      await saveCategory(editingCategory);
+      const catImage = editingCategory.image || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1000&q=80';
+
+      await saveCategory({
+        ...editingCategory,
+        image: catImage
+      });
       setCategoryModalOpen(false);
       setEditingCategory(null);
       setCategorySavedMsg('Department saved successfully!');
