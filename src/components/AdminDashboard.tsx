@@ -103,6 +103,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [editingCategory, setEditingCategory] = useState<Partial<Category> | null>(null);
   const [isSavingCategory, setIsSavingCategory] = useState(false);
   const [categorySavedMsg, setCategorySavedMsg] = useState<string | null>(null);
+  const [newSubcategoryInput, setNewSubcategoryInput] = useState<string>('');
 
   const [carouselModalOpen, setCarouselModalOpen] = useState(false);
   const [editingSlide, setEditingSlide] = useState<Partial<CarouselSlide> | null>(null);
@@ -233,6 +234,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       compareAtPrice: 3500,
       categoryId: categories[0]?.id || 'cat-fashion',
       categoryName: categories[0]?.name || 'Fashion',
+      subcategoryId: categories[0]?.subcategories?.[0] || '',
       stock: 25,
       sku: `ATAL-${Date.now().toString().slice(-6)}`,
       description: '',
@@ -294,6 +296,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         ...editingProduct,
         categoryId: editingProduct.categoryId || categories[0]?.id || 'cat-fashion',
         categoryName: catName,
+        subcategoryId: editingProduct.subcategoryId ? editingProduct.subcategoryId.trim() : undefined,
         thumbnail: allImages[0],
         images: allImages,
         variations: cleanedVariations
@@ -376,6 +379,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Category CRUD
   const handleOpenAddCategory = () => {
     setUploadError(null);
+    setNewSubcategoryInput('');
     setEditingCategory({
       name: '',
       description: '',
@@ -388,8 +392,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleOpenEditCategory = (cat: Category) => {
     setUploadError(null);
-    setEditingCategory({ ...cat });
+    setNewSubcategoryInput('');
+    setEditingCategory({
+      ...cat,
+      subcategories: cat.subcategories ? [...cat.subcategories] : []
+    });
     setCategoryModalOpen(true);
+  };
+
+  const handleAddSubcategory = () => {
+    if (!newSubcategoryInput.trim() || !editingCategory) return;
+    const name = newSubcategoryInput.trim();
+    const currentSubs = editingCategory.subcategories || [];
+    if (!currentSubs.some(s => s.toLowerCase() === name.toLowerCase())) {
+      setEditingCategory({
+        ...editingCategory,
+        subcategories: [...currentSubs, name]
+      });
+    }
+    setNewSubcategoryInput('');
+  };
+
+  const handleRemoveSubcategory = (indexToRemove: number) => {
+    if (!editingCategory || !editingCategory.subcategories) return;
+    setEditingCategory({
+      ...editingCategory,
+      subcategories: editingCategory.subcategories.filter((_, idx) => idx !== indexToRemove)
+    });
   };
 
   const handleSaveCategory = async (e: React.FormEvent) => {
@@ -401,14 +430,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setUploadError(null);
 
       const catImage = editingCategory.image || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1000&q=80';
+      const cleanSubcategories = Array.from(new Set(
+        (editingCategory.subcategories || [])
+          .map(s => s.trim())
+          .filter(Boolean)
+      ));
 
       await saveCategory({
         ...editingCategory,
-        image: catImage
+        image: catImage,
+        subcategories: cleanSubcategories
       });
       setCategoryModalOpen(false);
       setEditingCategory(null);
-      setCategorySavedMsg('Department saved successfully!');
+      setNewSubcategoryInput('');
+      setCategorySavedMsg('Department & subcategories saved successfully!');
       setTimeout(() => setCategorySavedMsg(null), 4000);
       onRefreshData();
     } catch (err: any) {
@@ -1015,7 +1051,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                         </td>
                         <td className="py-3 font-mono text-stone-600">{p.sku}</td>
-                        <td className="py-3 text-stone-700">{p.categoryName || 'General'}</td>
+                        <td className="py-3 text-stone-700">
+                          <div className="font-medium text-stone-900">{p.categoryName || 'General'}</div>
+                          {p.subcategoryId && (
+                            <span className="inline-block mt-0.5 px-2 py-0.5 rounded-md bg-stone-100 text-stone-600 text-[10px] font-semibold">
+                              {p.subcategoryId}
+                            </span>
+                          )}
+                        </td>
                         <td className="py-3 font-bold text-stone-950">{formatPrice(p.price)}</td>
                         <td className="py-3">
                           <span
@@ -1133,7 +1176,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
                     </div>
 
-                    <div className="mt-4 pt-3 border-t border-stone-200 flex items-center justify-between text-xs">
+                    {/* Subcategories list */}
+                    <div className="mt-3 pt-2.5 border-t border-stone-200/80">
+                      <div className="flex items-center justify-between text-[11px] mb-1.5">
+                        <span className="font-bold text-stone-700 flex items-center gap-1">
+                          <Layers className="w-3.5 h-3.5 text-emerald-700" />
+                          <span>Subcategories ({(c.subcategories?.length || 0)}):</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditCategory(c)}
+                          className="text-emerald-700 hover:text-emerald-900 font-bold hover:underline cursor-pointer"
+                        >
+                          + Manage
+                        </button>
+                      </div>
+                      {c.subcategories && c.subcategories.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {c.subcategories.map((sub, sIdx) => (
+                            <span
+                              key={sIdx}
+                              className="px-2 py-0.5 rounded-md bg-white border border-stone-200 text-stone-700 text-[10px] font-medium"
+                            >
+                              {sub}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-stone-400 italic">No subcategories created yet</span>
+                      )}
+                    </div>
+
+                    <div className="mt-3 pt-2.5 border-t border-stone-200 flex items-center justify-between text-xs">
                       {/* INSTANT ACTIVE / DEACTIVE TOGGLE */}
                       <button
                         type="button"
@@ -1935,7 +2009,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       setEditingProduct({
                         ...editingProduct,
                         categoryId: e.target.value,
-                        categoryName: selected?.name || ''
+                        categoryName: selected?.name || '',
+                        subcategoryId: selected?.subcategories?.[0] || ''
                       });
                     }}
                     className="w-full px-3 py-2 border rounded-xl bg-white"
@@ -1946,6 +2021,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </option>
                     ))}
                   </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1">Subcategory (Collection)</label>
+                  {(() => {
+                    const matchedCat = categories.find(c => c.id === editingProduct.categoryId);
+                    const subList = matchedCat?.subcategories || [];
+                    return (
+                      <select
+                        value={editingProduct.subcategoryId || ''}
+                        onChange={(e) => setEditingProduct({ ...editingProduct, subcategoryId: e.target.value })}
+                        className="w-full px-3 py-2 border rounded-xl bg-white"
+                      >
+                        <option value="">-- No Subcategory / General --</option>
+                        {subList.map((sub) => (
+                          <option key={sub} value={sub}>
+                            {sub}
+                          </option>
+                        ))}
+                        {editingProduct.subcategoryId && !subList.includes(editingProduct.subcategoryId) && (
+                          <option value={editingProduct.subcategoryId}>
+                            {editingProduct.subcategoryId} (Custom)
+                          </option>
+                        )}
+                      </select>
+                    );
+                  })()}
                 </div>
 
                 <div>
@@ -2447,60 +2549,76 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* CATEGORY MODAL WITH DIRECT IMAGE UPLOAD */}
+      {/* CATEGORY MODAL WITH DIRECT IMAGE UPLOAD & DEDICATED SLIDE BAR */}
       {categoryModalOpen && editingCategory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full flex flex-col shadow-2xl max-h-[92vh] overflow-hidden border border-stone-200 animate-in fade-in zoom-in-95 duration-150">
+            {/* STICKY MODAL HEADER */}
+            <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-stone-200 shrink-0 bg-stone-50/90">
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setCategoryModalOpen(false)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-xs font-bold text-stone-700 transition cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-stone-200 hover:bg-stone-100 text-xs font-bold text-stone-700 transition cursor-pointer shadow-2xs"
                   title="Back"
                 >
                   <ArrowLeft className="w-4 h-4" />
                   <span>Back</span>
                 </button>
-                <h3 className="text-base font-bold font-serif-display text-stone-950 ml-1">
-                  {editingCategory.id ? 'Edit Department' : 'Add Department'}
-                </h3>
+                <div className="ml-1">
+                  <h3 className="text-base font-bold font-serif-display text-stone-950">
+                    {editingCategory.id ? 'Edit Department / Category' : 'Add Department / Category'}
+                  </h3>
+                  <p className="text-[11px] text-stone-500 font-medium">
+                    Configure name, cover photo, and subcategories
+                  </p>
+                </div>
               </div>
               <button
                 onClick={() => setCategoryModalOpen(false)}
-                className="p-1 rounded-full hover:bg-stone-100 text-stone-400 hover:text-stone-700 cursor-pointer"
+                className="p-1.5 rounded-full hover:bg-stone-200 text-stone-400 hover:text-stone-700 transition cursor-pointer"
               >
                 <X className="w-5 h-5 text-stone-600" />
               </button>
             </div>
 
             {uploadError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold flex items-center gap-2">
+              <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold flex items-center gap-2 shrink-0">
                 <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
                 <span>{uploadError}</span>
               </div>
             )}
 
-            <form onSubmit={handleSaveCategory} className="space-y-3 text-xs">
+            {/* SCROLLABLE / SLIDEABLE MODAL CONTENT WITH VISIBLE SLIDE BAR */}
+            <form
+              id="category-modal-form"
+              onSubmit={handleSaveCategory}
+              className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-4 slidebar text-xs"
+            >
               <div>
-                <label className="block font-bold text-stone-700 mb-1">Department Name *</label>
+                <label className="block font-bold text-stone-800 mb-1">
+                  Department / Category Name <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
                   required
                   value={editingCategory.name || ''}
                   onChange={(e) => setEditingCategory({ ...editingCategory, name: e.target.value })}
-                  placeholder="e.g. Festive Apparel &amp; Shawls"
-                  className="w-full px-3 py-2 border rounded-xl"
+                  placeholder="e.g. Luxury Pret & Festive Shawls"
+                  className="w-full px-3.5 py-2.5 border border-stone-200 rounded-xl bg-white text-stone-900 font-semibold focus:outline-none focus:ring-2 focus:ring-stone-900"
                 />
               </div>
 
               {/* COVER IMAGE UPLOAD */}
-              <div className="space-y-2 p-3 bg-stone-50 border border-stone-200 rounded-xl">
+              <div className="space-y-2.5 p-3.5 bg-stone-50 border border-stone-200 rounded-2xl">
                 <div className="flex items-center justify-between">
-                  <label className="block font-bold text-stone-900">Cover Image (Upload from Device)</label>
-                  <label className="px-3 py-1.5 bg-stone-950 text-white rounded-lg font-bold text-[11px] hover:bg-stone-800 transition flex items-center gap-1.5 cursor-pointer">
-                    <Upload className="w-3 h-3" />
-                    <span>{isProcessingUpload ? 'Uploading...' : 'Choose File'}</span>
+                  <div>
+                    <label className="block font-bold text-stone-900 text-xs">Cover Image</label>
+                    <span className="text-[10px] text-stone-500">Upload directly from device or paste image URL</span>
+                  </div>
+                  <label className="px-3 py-1.5 bg-stone-950 text-white rounded-xl font-bold text-[11px] hover:bg-stone-850 transition flex items-center gap-1.5 cursor-pointer shadow-2xs">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>{isProcessingUpload ? 'Uploading...' : 'Upload Image'}</span>
                     <input
                       type="file"
                       accept="image/*"
@@ -2517,15 +2635,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <img
                         src={editingCategory.image}
                         alt="Category Preview"
-                        className="w-full h-32 object-cover"
+                        className="w-full h-36 object-cover"
                       />
                       <button
                         type="button"
                         onClick={() => setEditingCategory({ ...editingCategory, image: '' })}
-                        className="absolute top-2 right-2 p-1 bg-red-600 text-white rounded-lg text-xs cursor-pointer"
+                        className="absolute top-2 right-2 p-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs cursor-pointer shadow-md transition"
                         title="Remove image"
                       >
-                        <X className="w-3.5 h-3.5" />
+                        <X className="w-4 h-4" />
                       </button>
                     </div>
 
@@ -2551,19 +2669,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     })()}
                   </>
                 ) : (
-                  <div className="py-4 border-2 border-dashed border-stone-300 rounded-xl text-center text-stone-500 text-xs bg-white">
-                    Upload a high-resolution department cover photo
+                  <div className="py-6 border-2 border-dashed border-stone-300 rounded-xl text-center text-stone-500 text-xs bg-white">
+                    <p className="font-medium text-stone-600">No cover image chosen yet</p>
+                    <p className="text-[10px] text-stone-400 mt-0.5">Recommended ratio: 4:3 or 1:1 square</p>
                   </div>
                 )}
+
                 {/* Option to paste image URL directly */}
                 <div className="pt-2 border-t border-stone-200/80">
-                  <label className="block text-[11px] font-semibold text-stone-600 mb-1">Or Paste Direct Image Web URL</label>
+                  <label className="block text-[11px] font-semibold text-stone-600 mb-1">
+                    Or Paste Direct Image Web URL:
+                  </label>
                   <input
                     type="url"
                     placeholder="https://images.unsplash.com/photo-..."
                     value={editingCategory.image && !editingCategory.image.startsWith('data:') ? editingCategory.image : ''}
                     onChange={(e) => setEditingCategory({ ...editingCategory, image: e.target.value.trim() })}
-                    className="w-full px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs"
+                    className="w-full px-3 py-2 bg-white border border-stone-200 rounded-xl text-xs"
                   />
                 </div>
               </div>
@@ -2579,24 +2701,145 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 />
               </div>
 
-              <div className="pt-4 flex justify-end gap-2">
+              {/* SUBCATEGORIES MANAGEMENT (COLLECTIONS) WITH SLIDE BAR */}
+              <div className="space-y-3 p-3.5 bg-stone-50 border border-stone-200 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Layers className="w-4 h-4 text-emerald-700" />
+                    <label className="block font-bold text-stone-900 text-xs">
+                      Subcategories / Collections
+                    </label>
+                  </div>
+                  <span className="text-[10px] font-bold text-stone-700 bg-white px-2.5 py-0.5 rounded-full border border-stone-200 shadow-2xs">
+                    {(editingCategory.subcategories?.length || 0)} Total
+                  </span>
+                </div>
+                <p className="text-[11px] text-stone-500 leading-relaxed">
+                  Organize products into subcategories (e.g. Footwear, Watches, Shawls, Bags, Kurtas).
+                </p>
+
+                {/* Quick Suggestion Pills */}
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">
+                    Quick Suggestion Presets (Click to add):
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {['Footwear', 'Watches', 'Shawls', 'Kurtas', 'Accessories', 'Jewelry', 'Skincare', 'Fragrances', 'Cosmetics', 'Handbags', 'Western Wear', 'Winter Essentials'].map((preset) => {
+                      const alreadyAdded = editingCategory.subcategories?.some(
+                        (s) => s.toLowerCase() === preset.toLowerCase()
+                      );
+                      return (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => {
+                            if (!alreadyAdded) {
+                              const current = editingCategory.subcategories || [];
+                              setEditingCategory({
+                                ...editingCategory,
+                                subcategories: [...current, preset]
+                              });
+                            }
+                          }}
+                          disabled={alreadyAdded}
+                          className={`text-[10px] px-2 py-0.5 rounded-lg border font-medium transition cursor-pointer ${
+                            alreadyAdded
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200 opacity-60 cursor-default'
+                              : 'bg-white hover:bg-stone-100 text-stone-700 border-stone-200 hover:border-stone-300'
+                          }`}
+                        >
+                          {alreadyAdded ? `✓ ${preset}` : `+ ${preset}`}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Subcategory Input & Add Button */}
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="text"
+                    value={newSubcategoryInput}
+                    onChange={(e) => setNewSubcategoryInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddSubcategory();
+                      }
+                    }}
+                    placeholder="Type custom subcategory name..."
+                    className="flex-1 px-3 py-2 bg-white border border-stone-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-stone-900"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddSubcategory}
+                    disabled={!newSubcategoryInput.trim()}
+                    className="px-3.5 py-2 bg-stone-900 hover:bg-stone-850 text-white rounded-xl text-xs font-bold transition disabled:opacity-40 cursor-pointer flex items-center gap-1 shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add</span>
+                  </button>
+                </div>
+
+                {/* Active Subcategories Badges with Slide Bar */}
+                {editingCategory.subcategories && editingCategory.subcategories.length > 0 ? (
+                  <div>
+                    <div className="flex items-center justify-between text-[11px] text-stone-500 font-semibold mb-1">
+                      <span>Active Subcategories in this Department:</span>
+                      <span className="text-[10px] text-stone-400">(Slide bar enabled for scrolling)</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 pt-1 max-h-36 overflow-y-auto slidebar pr-1 border border-stone-200/60 rounded-xl p-2 bg-white/70">
+                      {editingCategory.subcategories.map((sub, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-stone-200 text-stone-800 text-xs font-semibold shadow-2xs group hover:border-stone-300"
+                        >
+                          <Tag className="w-3 h-3 text-emerald-600" />
+                          <span>{sub}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSubcategory(idx)}
+                            className="text-stone-400 hover:text-red-600 transition cursor-pointer p-0.5 rounded hover:bg-red-50"
+                            title={`Remove ${sub}`}
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-2.5 text-[11px] text-stone-400 border border-dashed border-stone-200 rounded-xl bg-white/70">
+                    No subcategories added yet. Use the presets above or type a custom name.
+                  </div>
+                )}
+              </div>
+            </form>
+
+            {/* STICKY MODAL FOOTER */}
+            <div className="px-5 sm:px-6 py-3.5 bg-stone-50 border-t border-stone-200 flex items-center justify-between shrink-0">
+              <span className="text-[11px] text-stone-500 font-medium">
+                Changes persist instantly across storefront &amp; database
+              </span>
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setCategoryModalOpen(false)}
-                  className="px-4 py-2 border rounded-xl cursor-pointer"
+                  className="px-4 py-2 border border-stone-300 bg-white rounded-xl text-stone-700 font-semibold cursor-pointer hover:bg-stone-100 transition text-xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
+                  form="category-modal-form"
                   disabled={isProcessingUpload || isSavingCategory}
-                  className="px-5 py-2.5 bg-stone-950 text-white rounded-xl font-bold cursor-pointer hover:bg-stone-800 disabled:opacity-50 flex items-center gap-2 shadow-sm"
+                  className="px-5 py-2.5 bg-stone-950 text-white rounded-xl font-bold cursor-pointer hover:bg-stone-850 disabled:opacity-50 flex items-center gap-2 shadow-sm text-xs transition"
                 >
                   {isSavingCategory && <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0" />}
                   <span>{isSavingCategory ? 'Saving Department...' : 'Save Department'}</span>
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}

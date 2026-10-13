@@ -32,3 +32,32 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* Dedicated visible, smooth slide bar for popups, drawers, and modal sheets */
+.slidebar {
+  scrollbar-width: thin;
+  scrollbar-color: #78716c #f5f5f4;
+  -webkit-overflow-scrolling: touch;
+}
+
+.slidebar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.slidebar::-webkit-scrollbar-track {
+  background: #f5f5f4;
+  border-radius: 9999px;
+  margin: 4px 0;
+}
+
+.slidebar::-webkit-scrollbar-thumb {
+  background: #78716c;
+  border-radius: 9999px;
+  border: 2px solid #f5f5f4;
+}
+
+.slidebar::-webkit-scrollbar-thumb:hover {
+  background: #44403c;
+}
+

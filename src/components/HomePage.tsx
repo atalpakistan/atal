@@ -455,9 +455,17 @@ export const HomePage: React.FC<HomePageProps> = ({
                   />
                 </div>
                 <div className="p-3 bg-white flex-1 flex flex-col justify-between">
-                  <h3 className="text-xs sm:text-sm font-bold text-stone-900 group-hover:text-emerald-700 transition line-clamp-1">
-                    {cat.name}
-                  </h3>
+                  <div>
+                    <h3 className="text-xs sm:text-sm font-bold text-stone-900 group-hover:text-emerald-700 transition line-clamp-1">
+                      {cat.name}
+                    </h3>
+                    {cat.subcategories && cat.subcategories.length > 0 && (
+                      <p className="text-[10px] text-stone-500 line-clamp-1 mt-0.5">
+                        {cat.subcategories.slice(0, 3).join(', ')}
+                        {cat.subcategories.length > 3 ? '...' : ''}
+                      </p>
+                    )}
+                  </div>
                   <span className="text-[10px] sm:text-[11px] font-medium text-stone-500 mt-1 inline-flex items-center gap-1">
                     Shop Now <ArrowRight className="w-3 h-3 text-stone-400 group-hover:translate-x-0.5 transition-transform" />
                   </span>

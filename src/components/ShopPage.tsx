@@ -5,7 +5,9 @@ import {
   Search as SearchIcon,
   ChevronDown,
   RotateCcw,
-  Sparkles
+  Sparkles,
+  Layers,
+  Tag
 } from 'lucide-react';
 import { Category, Product } from '../types';
 import { ProductCard } from './ProductCard';
@@ -14,6 +16,7 @@ import { formatPrice } from '../utils/format';
 interface ShopPageProps {
   categories: Category[];
   initialCategory?: string;
+  initialSubcategory?: string;
   onSelectProduct: (product: Product) => void;
   allProducts: Product[];
 }
@@ -21,11 +24,12 @@ interface ShopPageProps {
 export const ShopPage: React.FC<ShopPageProps> = ({
   categories,
   initialCategory = 'all',
+  initialSubcategory = 'all',
   onSelectProduct,
   allProducts
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>(initialCategory);
-  const [selectedSubcategory, setSelectedSubcategory] = useState<string>('all');
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string>(initialSubcategory);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'featured' | 'newest' | 'price-low' | 'price-high' | 'rating'>('featured');
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 100000]);
@@ -33,18 +37,33 @@ export const ShopPage: React.FC<ShopPageProps> = ({
   const [selectedColor, setSelectedColor] = useState<string>('all');
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
-  // Sync when initialCategory prop changes from external navigation
+  // Sync when initialCategory or initialSubcategory prop changes from external navigation
   useEffect(() => {
     setSelectedCategory(initialCategory || 'all');
-    setSelectedSubcategory('all');
-  }, [initialCategory]);
+    setSelectedSubcategory(initialSubcategory || 'all');
+  }, [initialCategory, initialSubcategory]);
 
   // Available subcategories based on current selected category
   const activeCategoryObj = useMemo(() => {
     return categories.find(c => c.id === selectedCategory || c.slug === selectedCategory);
   }, [categories, selectedCategory]);
 
-  const availableSubcategories = activeCategoryObj?.subcategories || [];
+  const availableSubcategories = useMemo(() => {
+    if (activeCategoryObj && activeCategoryObj.subcategories && activeCategoryObj.subcategories.length > 0) {
+      return activeCategoryObj.subcategories;
+    }
+    if (selectedCategory === 'all') {
+      const allSubs = new Set<string>();
+      categories.forEach(c => {
+        (c.subcategories || []).forEach(s => allSubs.add(s));
+      });
+      allProducts.forEach(p => {
+        if (p.subcategoryId) allSubs.add(p.subcategoryId);
+      });
+      return Array.from(allSubs).slice(0, 14);
+    }
+    return [];
+  }, [activeCategoryObj, categories, allProducts, selectedCategory]);
 
   // Filtered & sorted products
   const filteredProducts = useMemo(() => {
@@ -62,8 +81,11 @@ export const ShopPage: React.FC<ShopPageProps> = ({
       if (selectedCategory === 'best-sellers' && !product.bestSeller) return false;
 
       // Subcategory filter
-      if (selectedSubcategory !== 'all' && product.subcategoryId !== selectedSubcategory) {
-        return false;
+      if (selectedSubcategory !== 'all') {
+        const matchesSub =
+          product.subcategoryId?.toLowerCase() === selectedSubcategory.toLowerCase() ||
+          product.tags?.some((t) => t.toLowerCase() === selectedSubcategory.toLowerCase());
+        if (!matchesSub) return false;
       }
 
       // Search query
@@ -177,8 +199,8 @@ export const ShopPage: React.FC<ShopPageProps> = ({
           )}
         </div>
 
-        {/* Quick Category Chips (Desktop & Mobile) */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+        {/* Quick Category Chips (Desktop & Mobile with Slide Bar) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 slidebar">
           <button
             onClick={() => {
               setSelectedCategory('all');
@@ -241,35 +263,56 @@ export const ShopPage: React.FC<ShopPageProps> = ({
         </div>
       </div>
 
-      {/* Subcategories Bar if active */}
+      {/* Subcategories Bar with Slide Bar */}
       {availableSubcategories.length > 0 && (
-        <div className="flex items-center gap-2 py-3 overflow-x-auto border-b border-stone-100">
-          <span className="text-xs font-bold text-stone-500 uppercase tracking-wider whitespace-nowrap">
-            Subcategories:
-          </span>
+        <div className="flex items-center gap-1.5 sm:gap-2 py-3 overflow-x-auto border-b border-stone-200/70 slidebar">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-stone-700 whitespace-nowrap pr-1 shrink-0">
+            <Layers className="w-3.5 h-3.5 text-emerald-700" />
+            <span className="uppercase tracking-wider text-[11px]">Subcategories:</span>
+          </div>
           <button
             onClick={() => setSelectedSubcategory('all')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer shrink-0 ${
               selectedSubcategory === 'all'
-                ? 'bg-emerald-600 text-white'
-                : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                ? 'bg-emerald-800 text-white shadow-2xs font-bold'
+                : 'bg-white border border-stone-200 text-stone-700 hover:bg-stone-50'
             }`}
           >
-            All
+            All Collections
           </button>
-          {availableSubcategories.map((sub) => (
-            <button
-              key={sub}
-              onClick={() => setSelectedSubcategory(sub)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
-                selectedSubcategory === sub
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
-              }`}
-            >
-              {sub}
-            </button>
-          ))}
+          {availableSubcategories.map((sub) => {
+            const count = allProducts.filter(p => {
+              if (selectedCategory !== 'all' && selectedCategory !== 'new-arrivals' && selectedCategory !== 'best-sellers') {
+                const matchesCat = p.categoryId === selectedCategory ||
+                  p.categoryName?.toLowerCase() === selectedCategory.toLowerCase() ||
+                  (activeCategoryObj && p.categoryId === activeCategoryObj.id);
+                if (!matchesCat) return false;
+              }
+              return p.subcategoryId?.toLowerCase() === sub.toLowerCase() ||
+                p.tags?.some(t => t.toLowerCase() === sub.toLowerCase());
+            }).length;
+
+            return (
+              <button
+                key={sub}
+                onClick={() => setSelectedSubcategory(sub)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer shrink-0 ${
+                  selectedSubcategory === sub
+                    ? 'bg-emerald-800 text-white shadow-2xs font-bold'
+                    : 'bg-white border border-stone-200 text-stone-700 hover:bg-emerald-50 hover:text-emerald-900 hover:border-emerald-300'
+                }`}
+              >
+                <span>{sub}</span>
+                {count > 0 && (
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    selectedSubcategory === sub ? 'bg-emerald-950/40 text-white' : 'bg-stone-100 text-stone-500'
+                  }`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
 

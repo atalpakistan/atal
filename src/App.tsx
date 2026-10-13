@@ -42,6 +42,7 @@ function MainApp() {
   // Navigation states
   const [currentView, setCurrentView] = useState<'home' | 'shop' | 'product-detail' | 'checkout' | 'order-confirmation' | 'admin' | 'about' | 'contact'>('home');
   const [activeCategoryParam, setActiveCategoryParam] = useState<string>('all');
+  const [activeSubcategoryParam, setActiveSubcategoryParam] = useState<string>('all');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [confirmedOrder, setConfirmedOrder] = useState<Order | null>(null);
 
@@ -137,10 +138,11 @@ function MainApp() {
   const newArrivals = products.filter(p => p.newArrival);
 
   // Navigation handler
-  const handleNavigate = (view: string, param?: string) => {
+  const handleNavigate = (view: string, param?: string, subparam?: string) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     if (view === 'shop') {
       setActiveCategoryParam(param || 'all');
+      setActiveSubcategoryParam(subparam || 'all');
       setCurrentView('shop');
     } else if (view === 'admin') {
       loadData();
@@ -224,6 +226,7 @@ function MainApp() {
             allProducts={products}
             categories={categories}
             initialCategory={activeCategoryParam}
+            initialSubcategory={activeSubcategoryParam}
             onSelectProduct={handleSelectProduct}
           />
         )}

@@ -207,6 +207,12 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
           </button>
           <ChevronRight className="w-3.5 h-3.5 text-stone-300" />
           <span>{product.categoryName || 'Products'}</span>
+          {product.subcategoryId && (
+            <>
+              <ChevronRight className="w-3.5 h-3.5 text-stone-300" />
+              <span className="text-stone-700">{product.subcategoryId}</span>
+            </>
+          )}
           <ChevronRight className="w-3.5 h-3.5 text-stone-300" />
           <span className="text-stone-900 font-bold truncate max-w-xs">{product.name}</span>
         </div>
