@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Search, X, ArrowRight, Star, ArrowLeft } from 'lucide-react';
 import { Product } from '../types';
 import { formatPrice } from '../utils/format';
+import { getProductUrl } from '../utils/slug';
 
 interface SearchModalProps {
   isOpen: boolean;
@@ -111,13 +112,19 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 
             <div className="divide-y divide-stone-100 max-h-96 overflow-y-auto">
               {results.map((p) => (
-                <button
+                <a
                   key={p.id}
-                  onClick={() => {
+                  href={getProductUrl(p)}
+                  onClick={(e) => {
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+                      onClose();
+                      return;
+                    }
+                    e.preventDefault();
                     onSelectProduct(p);
                     onClose();
                   }}
-                  className="w-full flex items-center justify-between p-3 rounded-2xl hover:bg-stone-50 text-left transition group cursor-pointer"
+                  className="w-full flex items-center justify-between p-3 rounded-2xl hover:bg-stone-50 text-left transition group cursor-pointer no-underline text-inherit block"
                 >
                   <div className="flex items-center gap-3">
                     <img
@@ -139,7 +146,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                     <span>View</span>
                     <ArrowRight className="w-4 h-4" />
                   </div>
-                </button>
+                </a>
               ))}
             </div>
           </div>

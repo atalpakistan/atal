@@ -17,6 +17,7 @@ import {
 import { db } from './firebase';
 import { Category, Product, Order, OrderStatus, PaymentStatus, StoreSettings, CarouselSlide, SpotlightBanner } from '../types';
 import { INITIAL_CATEGORIES, INITIAL_PRODUCTS, INITIAL_CAROUSEL_SLIDES } from './seedData';
+import { generateUniqueProductSlug, slugify } from '../utils/slug';
 
 const PRODUCTS_COL = 'products';
 const CATEGORIES_COL = 'categories';
@@ -394,17 +395,29 @@ export async function getProductById(id: string): Promise<Product | null> {
 }
 
 export async function getProductBySlug(slug: string): Promise<Product | null> {
+  const normalizedSlug = slugify(slug);
   try {
-    const q = query(collection(db, PRODUCTS_COL), where('slug', '==', slug), limit(1));
+    // 1. Check exact slug in Firestore
+    const q = query(collection(db, PRODUCTS_COL), where('slug', '==', normalizedSlug), limit(1));
     const snap = await getDocs(q);
     if (!snap.empty) {
       const docData = snap.docs[0];
       return { id: docData.id, ...docData.data() } as Product;
     }
-    const local = getLocalProducts().find(p => p.slug === slug || p.id === slug);
+
+    // 2. Fallback check local cache by slug, normalized slug, or id
+    const local = getLocalProducts().find(p =>
+      (p.slug && slugify(p.slug) === normalizedSlug) ||
+      p.slug === slug ||
+      p.id === slug
+    );
     return local || null;
   } catch {
-    const local = getLocalProducts().find(p => p.slug === slug || p.id === slug);
+    const local = getLocalProducts().find(p =>
+      (p.slug && slugify(p.slug) === normalizedSlug) ||
+      p.slug === slug ||
+      p.id === slug
+    );
     return local || null;
   }
 }
@@ -413,11 +426,16 @@ export async function saveProduct(product: Partial<Product> & { id?: string }): 
   const prodId = product.id || `prod-${Date.now()}`;
   const prodRef = doc(db, PRODUCTS_COL, prodId);
   const now = Date.now();
+  const localList = getLocalProducts();
+
+  // Generate an SEO-friendly slug guaranteed to be unique across all products
+  const rawCandidate = product.slug || product.name || 'product';
+  const uniqueSlug = generateUniqueProductSlug(rawCandidate, localList, prodId);
 
   const finalProduct: Product = {
     id: prodId,
     name: product.name || 'Untitled Product',
-    slug: product.slug || (product.name ? product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '') : `product-${Date.now()}`),
+    slug: uniqueSlug,
     description: product.description || '',
     categoryId: product.categoryId || 'cat-fashion',
     categoryName: product.categoryName || '',
@@ -445,7 +463,6 @@ export async function saveProduct(product: Partial<Product> & { id?: string }): 
   };
 
   // 1. Immediately update local storage cache for instant UI feedback
-  const localList = getLocalProducts();
   const existingIdx = localList.findIndex(p => p.id === prodId);
   if (existingIdx >= 0) {
     localList[existingIdx] = finalProduct;
@@ -679,6 +696,21 @@ export async function fetchUnifiedStoreData(): Promise<UnifiedStoreData> {
 
       finalProds = Array.from(remoteMap.values());
       finalProds.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+      // Guarantee every product has an SEO-friendly, unique slug
+      const registeredSlugs = new Set<string>();
+      finalProds = finalProds.map(p => {
+        let s = p.slug ? slugify(p.slug) : slugify(p.name || 'product');
+        if (!s) s = `product-${p.id}`;
+        if (registeredSlugs.has(s)) {
+          let count = 2;
+          while (registeredSlugs.has(`${s}-${count}`)) count++;
+          s = `${s}-${count}`;
+        }
+        registeredSlugs.add(s);
+        return { ...p, slug: s };
+      });
+
       saveLocalProducts(finalProds);
     }
 

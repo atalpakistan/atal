@@ -34,7 +34,10 @@ import {
   Percent,
   RotateCcw,
   Copy,
-  Truck
+  Truck,
+  ExternalLink,
+  Globe,
+  Link2
 } from 'lucide-react';
 import { Product, Category, Order, OrderStatus, PaymentStatus, ProductVariation, StoreSettings, CarouselSlide, SpotlightBanner } from '../types';
 import {
@@ -58,6 +61,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { formatPrice } from '../utils/format';
 import { processImageFile, getImageFormatInfo } from '../utils/imageUpload';
+import { generateUniqueProductSlug, slugify, getProductUrl } from '../utils/slug';
 
 interface AdminDashboardProps {
   products: Product[];
@@ -292,8 +296,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const matchedCat = categories.find(c => c.id === editingProduct.categoryId);
       const catName = matchedCat?.name || editingProduct.categoryName || 'General';
 
+      // Generate clean unique slug
+      const rawSlugCandidate = editingProduct.slug || editingProduct.name || 'product';
+      const cleanSlug = generateUniqueProductSlug(rawSlugCandidate, products, editingProduct.id);
+
       await saveProduct({
         ...editingProduct,
+        slug: cleanSlug,
         categoryId: editingProduct.categoryId || categories[0]?.id || 'cat-fashion',
         categoryName: catName,
         subcategoryId: editingProduct.subcategoryId ? editingProduct.subcategoryId.trim() : undefined,
@@ -1048,6 +1057,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div>
                             <div className="font-bold text-stone-900 line-clamp-1">{p.name}</div>
                             <div className="text-[11px] text-stone-500">{p.brand}</div>
+                            <a
+                              href={getProductUrl(p)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[10px] text-emerald-700 hover:text-emerald-950 font-mono hover:underline mt-0.5"
+                              title="Open live product page in new tab"
+                            >
+                              <ExternalLink className="w-2.5 h-2.5" />
+                              <span>{p.slug ? `/products/${p.slug}` : `/products/${p.id}`}</span>
+                            </a>
                           </div>
                         </td>
                         <td className="py-3 font-mono text-stone-600">{p.sku}</td>
@@ -1098,7 +1117,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             )}
                           </button>
                         </td>
-                        <td className="py-3 text-right space-x-1.5">
+                        <td className="py-3 text-right space-x-1.5 whitespace-nowrap">
+                          <a
+                            href={getProductUrl(p)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-block p-1.5 text-stone-600 hover:text-black hover:bg-stone-200 rounded-lg transition"
+                            title="Open live product page in new tab"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </a>
                           <button
                             onClick={() => handleOpenEditProduct(p)}
                             className="p-1.5 text-stone-700 hover:text-black hover:bg-stone-200 rounded-lg transition cursor-pointer"
@@ -1983,10 +2011,88 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     type="text"
                     required
                     value={editingProduct.name || ''}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
-                    placeholder="e.g. Royal Silk Embroidered Kurta"
+                    onChange={(e) => {
+                      const newName = e.target.value;
+                      const currentAuto = slugify(editingProduct.name || '');
+                      const isAutoSynced = !editingProduct.slug || editingProduct.slug === currentAuto;
+                      setEditingProduct({
+                        ...editingProduct,
+                        name: newName,
+                        slug: isAutoSynced ? slugify(newName) : editingProduct.slug
+                      });
+                    }}
+                    placeholder="e.g. Wireless Earbuds Pro"
                     className="w-full px-3 py-2 border rounded-xl"
                   />
+                </div>
+
+                {/* SEO FRIENDLY PRODUCT URL & SLUG */}
+                <div className="col-span-2 p-3 bg-stone-50 border border-stone-200 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-1.5 font-bold text-stone-800">
+                      <Globe className="w-3.5 h-3.5 text-stone-600" />
+                      <span>SEO Friendly Product URL (/products/:slug) *</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const generated = generateUniqueProductSlug(editingProduct.name || 'product', products, editingProduct.id);
+                        setEditingProduct({ ...editingProduct, slug: generated });
+                      }}
+                      className="text-[11px] text-stone-700 hover:text-black font-semibold underline cursor-pointer"
+                    >
+                      Regenerate from Title
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-stone-400 select-none bg-stone-200/70 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold">
+                      /products/
+                    </span>
+                    <input
+                      type="text"
+                      required
+                      value={editingProduct.slug !== undefined ? editingProduct.slug : slugify(editingProduct.name || '')}
+                      onChange={(e) => {
+                        setEditingProduct({
+                          ...editingProduct,
+                          slug: slugify(e.target.value)
+                        });
+                      }}
+                      placeholder="e.g. wireless-earbuds-pro"
+                      className="flex-1 px-3 py-1.5 border rounded-xl font-mono text-stone-900 bg-white"
+                    />
+                  </div>
+
+                  {/* Live URL Preview and Uniqueness Status */}
+                  {(() => {
+                    const rawCandidate = editingProduct.slug || slugify(editingProduct.name || '');
+                    const isConflict = products.some(
+                      p => p.id !== editingProduct.id && p.slug && slugify(p.slug) === slugify(rawCandidate)
+                    );
+                    const resolvedUnique = generateUniqueProductSlug(rawCandidate, products, editingProduct.id);
+
+                    return (
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] pt-1">
+                        <div className="flex items-center gap-1 text-stone-500 font-mono truncate">
+                          <Link2 className="w-3 h-3 text-stone-400 shrink-0" />
+                          <span className="truncate">Preview: /products/{isConflict ? resolvedUnique : rawCandidate || '...'}</span>
+                        </div>
+                        {rawCandidate && (
+                          isConflict ? (
+                            <span className="inline-flex items-center gap-1 text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 shrink-0">
+                              ⚠️ Name match: automatically resolves to &quot;{resolvedUnique}&quot;
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 shrink-0">
+                              <Check className="w-3 h-3 stroke-[3]" />
+                              Unique Product Slug
+                            </span>
+                          )
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div>

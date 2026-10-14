@@ -15,11 +15,13 @@ import { formatPrice } from '../utils/format';
 interface CartDrawerProps {
   onCheckout: () => void;
   onNavigateToShop: () => void;
+  onSelectProduct?: (productId: string) => void;
 }
 
 export const CartDrawer: React.FC<CartDrawerProps> = ({
   onCheckout,
-  onNavigateToShop
+  onNavigateToShop,
+  onSelectProduct
 }) => {
   const {
     cart,
@@ -140,15 +142,43 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   key={item.id}
                   className="flex gap-4 p-3 rounded-2xl bg-stone-50 border border-stone-200/80 items-center"
                 >
-                  <img
-                    src={item.thumbnail}
-                    alt={item.productName}
-                    className="w-16 h-16 rounded-xl object-cover border border-stone-200"
-                  />
+                  <a
+                    href={`/products/${encodeURIComponent(item.productSlug || item.productId)}`}
+                    onClick={(e) => {
+                      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+                        return;
+                      }
+                      e.preventDefault();
+                      setIsCartOpen(false);
+                      onSelectProduct?.(item.productSlug || item.productId);
+                    }}
+                    className="flex-shrink-0 group cursor-pointer block"
+                    title={`View ${item.productName}`}
+                  >
+                    <img
+                      src={item.thumbnail}
+                      alt={item.productName}
+                      className="w-16 h-16 rounded-xl object-cover border border-stone-200 group-hover:scale-105 transition"
+                    />
+                  </a>
+
                   <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-bold text-stone-900 truncate">
-                      {item.productName}
-                    </h4>
+                    <a
+                      href={`/products/${encodeURIComponent(item.productSlug || item.productId)}`}
+                      onClick={(e) => {
+                        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+                          return;
+                        }
+                        e.preventDefault();
+                        setIsCartOpen(false);
+                        onSelectProduct?.(item.productSlug || item.productId);
+                      }}
+                      className="block group cursor-pointer no-underline text-inherit"
+                    >
+                      <h4 className="text-sm font-bold text-stone-900 group-hover:text-emerald-700 transition truncate">
+                        {item.productName}
+                      </h4>
+                    </a>
                     
                     {/* Variation badges */}
                     <div className="flex flex-wrap items-center gap-1.5 my-1">

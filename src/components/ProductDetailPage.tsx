@@ -11,12 +11,14 @@ import {
   ChevronLeft,
   Share2,
   Sparkles,
-  ArrowLeft
+  ArrowLeft,
+  ExternalLink
 } from 'lucide-react';
 import { Product, ProductVariation } from '../types';
 import { useCart } from '../context/CartContext';
 import { ProductCard } from './ProductCard';
 import { formatPrice } from '../utils/format';
+import { getProductUrl } from '../utils/slug';
 
 interface ProductDetailPageProps {
   product: Product;
@@ -170,15 +172,16 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
   };
 
   const handleShare = () => {
+    const productPageUrl = `${window.location.origin}${getProductUrl(product)}`;
     if (navigator.share) {
       navigator.share({
         title: product.name,
         text: product.description,
-        url: window.location.href,
+        url: productPageUrl,
       }).catch(() => {});
     } else {
-      navigator.clipboard.writeText(window.location.href);
-      setNotification('Link copied to clipboard!');
+      navigator.clipboard.writeText(productPageUrl);
+      setNotification('Product page link copied to clipboard!');
       setTimeout(() => setNotification(null), 2500);
     }
   };
@@ -195,18 +198,19 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
         </div>
       )}
 
-      {/* Breadcrumbs & Back */}
-      <div className="flex items-center justify-between pb-6 border-b border-stone-200 mb-8">
-        <div className="flex items-center gap-2 text-xs font-semibold text-stone-600">
+      {/* Breadcrumbs & Action Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-stone-200 mb-8 gap-4">
+        <div className="flex items-center flex-wrap gap-2 text-xs font-semibold text-stone-600">
           <button
             onClick={onBack}
-            className="flex items-center gap-1 text-stone-700 hover:text-black hover:underline"
+            className="flex items-center gap-1.5 text-stone-900 bg-stone-100 hover:bg-stone-200 px-3 py-1.5 rounded-xl transition cursor-pointer font-bold"
+            title="Return to shopping"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Back to Catalog</span>
+            <span>Back to Store</span>
           </button>
           <ChevronRight className="w-3.5 h-3.5 text-stone-300" />
-          <span>{product.categoryName || 'Products'}</span>
+          <span className="text-stone-700">{product.categoryName || 'Catalog'}</span>
           {product.subcategoryId && (
             <>
               <ChevronRight className="w-3.5 h-3.5 text-stone-300" />
@@ -214,16 +218,31 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
             </>
           )}
           <ChevronRight className="w-3.5 h-3.5 text-stone-300" />
-          <span className="text-stone-900 font-bold truncate max-w-xs">{product.name}</span>
+          <span className="text-stone-950 font-bold truncate max-w-[200px] sm:max-w-xs">{product.name}</span>
         </div>
 
-        <button
-          onClick={handleShare}
-          className="flex items-center gap-1.5 text-xs font-semibold text-stone-600 hover:text-black py-1.5 px-3 rounded-lg border border-stone-200 hover:bg-stone-50 transition"
-        >
-          <Share2 className="w-3.5 h-3.5" />
-          <span>Share</span>
-        </button>
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          {/* Explicit separate tab / window button */}
+          <a
+            href={getProductUrl(product)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-xs font-semibold text-stone-700 hover:text-stone-950 py-1.5 px-3 rounded-xl border border-stone-200 bg-white hover:bg-stone-50 transition shadow-2xs cursor-pointer"
+            title="Open this product in a separate browser tab"
+          >
+            <ExternalLink className="w-3.5 h-3.5 text-stone-600" />
+            <span>Open in New Tab</span>
+          </a>
+
+          <button
+            onClick={handleShare}
+            className="flex items-center gap-1.5 text-xs font-semibold text-stone-700 hover:text-stone-950 py-1.5 px-3 rounded-xl border border-stone-200 bg-white hover:bg-stone-50 transition shadow-2xs cursor-pointer"
+            title="Share or copy direct product page link"
+          >
+            <Share2 className="w-3.5 h-3.5 text-stone-600" />
+            <span>Share Link</span>
+          </button>
+        </div>
       </div>
 
       {/* Main Product Showcase: 2 Columns */}

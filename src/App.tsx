@@ -35,15 +35,90 @@ import {
 } from './services/storeService';
 import { Product, Category, Order, CarouselSlide, SpotlightBanner } from './types';
 import { INITIAL_CATEGORIES, INITIAL_PRODUCTS, INITIAL_CAROUSEL_SLIDES } from './services/seedData';
+import { extractProductSlugFromLocation, getProductUrl, slugify } from './utils/slug';
+import { updateProductSeo, resetStoreSeo } from './utils/seo';
+
+interface RouteState {
+  view: 'home' | 'shop' | 'product-detail' | 'checkout' | 'order-confirmation' | 'admin' | 'about' | 'contact';
+  productSlug?: string | null;
+  productId?: string | null;
+  category?: string;
+  subcategory?: string;
+}
+
+function parseLocationRoute(): RouteState {
+  if (typeof window === 'undefined') {
+    return { view: 'home', productSlug: null, productId: null, category: 'all', subcategory: 'all' };
+  }
+  const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
+  const params = new URLSearchParams(window.location.search);
+  const hash = window.location.hash;
+
+  // 1. Check for product slug route: /products/:slug or /product/:slug or fallback query param
+  const slugFound = extractProductSlugFromLocation(pathname, window.location.search, hash);
+  const catParam = params.get('category') || params.get('cat') || 'all';
+  const subcatParam = params.get('subcategory') || params.get('subcat') || 'all';
+
+  if (slugFound) {
+    return {
+      view: 'product-detail',
+      productSlug: slugFound,
+      productId: slugFound,
+      category: catParam,
+      subcategory: subcatParam
+    };
+  }
+
+  // 2. Check path routes: /shop, /admin, /checkout, /about, /contact
+  const routeSegment = pathname.replace(/^\//, '').split('/')[0];
+  if (['shop', 'checkout', 'admin', 'about', 'contact'].includes(routeSegment)) {
+    return {
+      view: routeSegment as any,
+      productSlug: null,
+      productId: null,
+      category: catParam,
+      subcategory: subcatParam
+    };
+  }
+
+  // 3. Check query param: ?page=...
+  const pageParam = params.get('page') || params.get('view');
+  if (pageParam && ['home', 'shop', 'checkout', 'order-confirmation', 'admin', 'about', 'contact'].includes(pageParam)) {
+    return {
+      view: pageParam as any,
+      productSlug: null,
+      productId: null,
+      category: catParam,
+      subcategory: subcatParam
+    };
+  }
+
+  return { view: 'home', productSlug: null, productId: null, category: 'all', subcategory: 'all' };
+}
 
 function MainApp() {
   const { isAdmin, isStaff } = useAuth();
 
-  // Navigation states
-  const [currentView, setCurrentView] = useState<'home' | 'shop' | 'product-detail' | 'checkout' | 'order-confirmation' | 'admin' | 'about' | 'contact'>('home');
-  const [activeCategoryParam, setActiveCategoryParam] = useState<string>('all');
-  const [activeSubcategoryParam, setActiveSubcategoryParam] = useState<string>('all');
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const initialRoute = React.useMemo(() => parseLocationRoute(), []);
+
+  // Navigation states synchronized with separate page URL routes
+  const [currentView, setCurrentView] = useState<'home' | 'shop' | 'product-detail' | 'checkout' | 'order-confirmation' | 'admin' | 'about' | 'contact'>(initialRoute.view);
+  const [activeCategoryParam, setActiveCategoryParam] = useState<string>(initialRoute.category || 'all');
+  const [activeSubcategoryParam, setActiveSubcategoryParam] = useState<string>(initialRoute.subcategory || 'all');
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(() => {
+    const slugOrId = initialRoute.productSlug || initialRoute.productId;
+    if (slugOrId) {
+      const cached = getLocalProducts();
+      const allProds = cached && cached.length > 0 ? cached : INITIAL_PRODUCTS;
+      const targetSlug = slugify(slugOrId);
+      return allProds.find(p =>
+        (p.slug && slugify(p.slug) === targetSlug) ||
+        p.slug === slugOrId ||
+        p.id === slugOrId
+      ) || null;
+    }
+    return null;
+  });
   const [confirmedOrder, setConfirmedOrder] = useState<Order | null>(null);
 
   // Search & Auth modal states
@@ -78,7 +153,7 @@ function MainApp() {
     return list && list.length > 0 ? list : INITIAL_CAROUSEL_SLIDES;
   });
   const [spotlightBanner, setSpotlightBanner] = useState<SpotlightBanner>(() => getLocalSpotlightBanner());
-  const [loading, setLoading] = useState(false);
+  const [, setLoading] = useState(false);
 
   // Load data: Single unified parallel pass with zero duplicates and non-blocking background seeding
   const loadData = useCallback(async () => {
@@ -89,7 +164,29 @@ function MainApp() {
 
       if (data.categories && data.categories.length > 0) setCategories(data.categories);
       if (data.adminCategories && data.adminCategories.length > 0) setAdminCategories(data.adminCategories);
-      if (data.products && data.products.length > 0) setProducts(data.products);
+      if (data.products && data.products.length > 0) {
+        setProducts(data.products);
+        // If product page is requested, ensure fresh data is connected
+        const targetSlugOrId = initialRoute.productSlug || initialRoute.productId;
+        if (targetSlugOrId && !selectedProduct) {
+          const targetNorm = slugify(targetSlugOrId);
+          const matched = data.products.find(p =>
+            (p.slug && slugify(p.slug) === targetNorm) ||
+            p.slug === targetSlugOrId ||
+            p.id === targetSlugOrId
+          );
+          if (matched) {
+            setSelectedProduct(matched);
+            updateProductSeo(matched);
+          }
+        } else if (selectedProduct) {
+          const fresh = data.products.find(p => p.id === selectedProduct.id);
+          if (fresh) {
+            setSelectedProduct(fresh);
+            updateProductSeo(fresh);
+          }
+        }
+      }
       if (data.adminProducts && data.adminProducts.length > 0) setAdminProducts(data.adminProducts);
       if (data.orders) setOrders(data.orders);
       if (data.carouselSlides && data.carouselSlides.length > 0) setCarouselSlides(data.carouselSlides);
@@ -100,7 +197,7 @@ function MainApp() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [initialRoute.productSlug, initialRoute.productId, selectedProduct]);
 
   useEffect(() => {
     loadData();
@@ -137,26 +234,103 @@ function MainApp() {
   const bestSellers = products.filter(p => p.bestSeller);
   const newArrivals = products.filter(p => p.newArrival);
 
-  // Navigation handler
-  const handleNavigate = (view: string, param?: string, subparam?: string) => {
+  // Navigation handler with URL pushState
+  const handleNavigate = (view: string, param?: string, subparam?: string, pushHistory = true) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    resetStoreSeo();
+
     if (view === 'shop') {
-      setActiveCategoryParam(param || 'all');
-      setActiveSubcategoryParam(subparam || 'all');
+      const cat = param || 'all';
+      const sub = subparam || 'all';
+      setActiveCategoryParam(cat);
+      setActiveSubcategoryParam(sub);
       setCurrentView('shop');
+      document.title = 'Shop All Collections | ATAL Luxury Lifestyle';
+      if (pushHistory) {
+        let url = '?page=shop';
+        if (cat !== 'all') url += `&category=${encodeURIComponent(cat)}`;
+        if (sub !== 'all') url += `&subcategory=${encodeURIComponent(sub)}`;
+        window.history.pushState({ view: 'shop', category: cat, subcategory: sub }, '', url);
+      }
     } else if (view === 'admin') {
       loadData();
       setCurrentView('admin');
-    } else if (view === 'home' || view === 'about' || view === 'contact' || view === 'checkout') {
+      document.title = 'Admin Dashboard | ATAL Store';
+      if (pushHistory) {
+        window.history.pushState({ view: 'admin' }, '', '?page=admin');
+      }
+    } else if (view === 'home') {
+      setCurrentView('home');
+      document.title = 'ATAL – Shop Smart. Live Better. 🛍️';
+      if (pushHistory) {
+        window.history.pushState({ view: 'home' }, '', '/');
+      }
+    } else if (view === 'about' || view === 'contact' || view === 'checkout') {
       setCurrentView(view as any);
+      document.title = `${view.charAt(0).toUpperCase() + view.slice(1)} | ATAL Luxury Lifestyle`;
+      if (pushHistory) {
+        window.history.pushState({ view }, '', `?page=${view}`);
+      }
     }
   };
 
-  const handleSelectProduct = (prod: Product) => {
+  // Every product opens in a dedicated separate page with deep-link SEO URL: /products/:slug
+  const handleSelectProduct = (prod: Product, pushHistory = true) => {
     setSelectedProduct(prod);
     setCurrentView('product-detail');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    updateProductSeo(prod);
+
+    if (pushHistory) {
+      const canonicalPath = getProductUrl(prod);
+      window.history.pushState(
+        { view: 'product-detail', slug: prod.slug, productId: prod.id },
+        '',
+        canonicalPath
+      );
+    }
   };
+
+  const handleSelectProductById = (slugOrId: string) => {
+    const targetNorm = slugify(slugOrId);
+    const prod = products.find(p => (p.slug && slugify(p.slug) === targetNorm) || p.slug === slugOrId || p.id === slugOrId) ||
+                 INITIAL_PRODUCTS.find(p => (p.slug && slugify(p.slug) === targetNorm) || p.slug === slugOrId || p.id === slugOrId);
+    if (prod) {
+      handleSelectProduct(prod, true);
+    }
+  };
+
+  // Listen to browser Back / Forward buttons (PopState)
+  useEffect(() => {
+    const handlePopState = () => {
+      const route = parseLocationRoute();
+      const slugOrId = route.productSlug || route.productId;
+      if (route.view === 'product-detail' && slugOrId) {
+        const targetNorm = slugify(slugOrId);
+        const prod = products.find(p => (p.slug && slugify(p.slug) === targetNorm) || p.slug === slugOrId || p.id === slugOrId) ||
+                     INITIAL_PRODUCTS.find(p => (p.slug && slugify(p.slug) === targetNorm) || p.slug === slugOrId || p.id === slugOrId);
+        if (prod) {
+          handleSelectProduct(prod, false);
+          return;
+        } else {
+          setSelectedProduct(null);
+          setCurrentView('product-detail');
+          return;
+        }
+      }
+      handleNavigate(route.view, route.category, route.subcategory, false);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [products]);
+
+  // Keep SEO synced if product detail view is active
+  useEffect(() => {
+    if (currentView === 'product-detail' && selectedProduct) {
+      updateProductSeo(selectedProduct);
+    }
+  }, [currentView, selectedProduct]);
 
   const handleOrderSuccess = (order: Order) => {
     setConfirmedOrder(order);
@@ -189,10 +363,11 @@ function MainApp() {
         defaultMode={customerAuthMode}
       />
 
-      {/* Cart Drawer */}
+      {/* Cart Drawer with Separate Page Navigation */}
       <CartDrawer
         onCheckout={() => handleNavigate('checkout')}
         onNavigateToShop={() => handleNavigate('shop')}
+        onSelectProduct={handleSelectProductById}
       />
 
       {/* Header (Hidden only in full Admin screen) */}
@@ -231,13 +406,32 @@ function MainApp() {
           />
         )}
 
-        {currentView === 'product-detail' && selectedProduct && (
-          <ProductDetailPage
-            product={selectedProduct}
-            relatedProducts={products.filter(p => p.categoryId === selectedProduct.categoryId && p.id !== selectedProduct.id)}
-            onSelectProduct={handleSelectProduct}
-            onBack={() => handleNavigate('shop')}
-          />
+        {currentView === 'product-detail' && (
+          selectedProduct ? (
+            <ProductDetailPage
+              product={selectedProduct}
+              relatedProducts={products.filter(p => p.categoryId === selectedProduct.categoryId && p.id !== selectedProduct.id)}
+              onSelectProduct={handleSelectProduct}
+              onBack={() => {
+                if (window.history.length > 1) {
+                  window.history.back();
+                } else {
+                  handleNavigate('shop');
+                }
+              }}
+            />
+          ) : (
+            <div className="max-w-4xl mx-auto px-4 py-24 text-center">
+              <h2 className="text-2xl font-bold text-stone-900 font-serif-display mb-2">Product Not Found</h2>
+              <p className="text-stone-600 text-sm mb-6">The requested product could not be located in our catalog.</p>
+              <button
+                onClick={() => handleNavigate('shop')}
+                className="px-6 py-2.5 bg-stone-950 text-white rounded-xl text-xs font-bold hover:bg-stone-850 transition cursor-pointer"
+              >
+                Return to Catalog
+              </button>
+            </div>
+          )
         )}
 
         {currentView === 'checkout' && (

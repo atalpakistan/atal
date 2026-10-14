@@ -3,6 +3,7 @@ import { Star, ShoppingBag, Heart, Check } from 'lucide-react';
 import { Product, ProductVariation } from '../types';
 import { useCart } from '../context/CartContext';
 import { formatPrice } from '../utils/format';
+import { getProductUrl } from '../utils/slug';
 
 interface ProductCardProps {
   product: Product;
@@ -46,9 +47,17 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelect, com
   };
 
   return (
-    <div
-      onClick={() => onSelect(product)}
-      className="group relative flex flex-col bg-white rounded-xl sm:rounded-2xl border border-stone-200/90 shadow-2xs hover:shadow-lg hover:border-stone-300 transition-all duration-300 overflow-hidden cursor-pointer"
+    <a
+      href={getProductUrl(product)}
+      onClick={(e) => {
+        // If user used modifier keys (Ctrl, Cmd, Shift, Alt) or right click, allow default browser behavior (open in separate tab/window)
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+          return;
+        }
+        e.preventDefault();
+        onSelect(product);
+      }}
+      className="group relative flex flex-col bg-white rounded-xl sm:rounded-2xl border border-stone-200/90 shadow-2xs hover:shadow-lg hover:border-stone-300 transition-all duration-300 overflow-hidden cursor-pointer block no-underline text-inherit select-none"
     >
       {/* Product Image Container */}
       <div className="relative aspect-square w-full bg-stone-100 overflow-hidden">
@@ -189,6 +198,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelect, com
           </div>
         </div>
       </div>
-    </div>
+    </a>
   );
 };
