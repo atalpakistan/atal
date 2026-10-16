@@ -65,6 +65,89 @@ export const INITIAL_CATEGORIES: Category[] = [
 
 export const INITIAL_PRODUCTS: Product[] = [
   {
+    id: 'prod-earbuds-pro',
+    name: 'ATAL Wireless Earbuds Pro',
+    slug: 'wireless-earbuds-pro',
+    description: 'Flagship true wireless earbuds engineered for studio precision, spatial depth, and all-day comfort. Features adaptive hybrid active noise cancellation, transparency ambient mode, IPX5 weather protection, and an ultra-compact wireless charging case delivering up to 36 hours of total playtime.',
+    categoryId: 'cat-electronics',
+    categoryName: 'Audio & Electronics',
+    subcategoryId: 'Earbuds',
+    brand: 'ATAL Sound',
+    price: 12500,
+    compareAtPrice: 15500,
+    images: [
+      'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=1200&q=85',
+      'https://images.unsplash.com/photo-1572569511254-d8f925fe2cbb?auto=format&fit=crop&w=1200&q=85',
+      'https://images.unsplash.com/photo-1606220588913-b3aacb4d2f46?auto=format&fit=crop&w=1200&q=85',
+      'https://images.unsplash.com/photo-1546435770-a3e426bf472b?auto=format&fit=crop&w=1200&q=85'
+    ],
+    thumbnail: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=800&q=80',
+    sku: 'ATAL-EB-PRO-001',
+    stock: 38,
+    rating: 4.95,
+    reviewCount: 214,
+    tags: ['wireless', 'earbuds', 'pro', 'noise-cancelling', 'bluetooth', 'electronics'],
+    featured: true,
+    bestSeller: true,
+    newArrival: true,
+    active: true,
+    variations: [
+      {
+        id: 'var-eb-black',
+        type: 'color',
+        name: 'Matte Obsidian Black',
+        value: '#171717',
+        sku: 'ATAL-EB-PRO-BLK',
+        price: 12500,
+        stock: 20,
+        images: [
+          'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=1200&q=85',
+          'https://images.unsplash.com/photo-1572569511254-d8f925fe2cbb?auto=format&fit=crop&w=1200&q=85'
+        ]
+      },
+      {
+        id: 'var-eb-white',
+        type: 'color',
+        name: 'Glacier Ceramic White',
+        value: '#f8fafc',
+        sku: 'ATAL-EB-PRO-WHT',
+        price: 12500,
+        stock: 18,
+        images: [
+          'https://images.unsplash.com/photo-1606220588913-b3aacb4d2f46?auto=format&fit=crop&w=1200&q=85',
+          'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=1200&q=85'
+        ]
+      },
+      {
+        id: 'var-eb-std',
+        type: 'size',
+        name: 'Standard Charging Case',
+        value: 'Standard',
+        sku: 'ATAL-EB-PRO-STD',
+        price: 12500,
+        stock: 25
+      },
+      {
+        id: 'var-eb-qi',
+        type: 'size',
+        name: 'Pro Qi Wireless Charging Bundle',
+        value: 'Pro Bundle',
+        sku: 'ATAL-EB-PRO-QI',
+        price: 14500,
+        stock: 13
+      }
+    ],
+    specifications: [
+      { name: 'Active Noise Cancellation', value: 'Hybrid ANC (-38dB) with Transparency Ambient Mode' },
+      { name: 'Battery Playtime', value: '8.5 Hours Earbuds + 28 Hours Wireless Charging Case (36.5h Total)' },
+      { name: 'Connectivity', value: 'Bluetooth 5.4, AAC & LDAC Hi-Res Audio' },
+      { name: 'Water Resistance', value: 'IPX5 Sweat & Water Resistant' },
+      { name: 'Microphones', value: 'Quad Beamforming Mics with AI Environmental Noise Cancellation' }
+    ],
+    createdAt: Date.now() - 3000000,
+    updatedAt: Date.now() - 3000000
+  },
+  {
     id: 'prod-1',
     name: 'ATAL Acoustic Wireless ANC Headphones',
     slug: 'atal-acoustic-wireless-anc-headphones',

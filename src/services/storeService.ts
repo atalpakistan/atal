@@ -17,7 +17,7 @@ import {
 import { db } from './firebase';
 import { Category, Product, Order, OrderStatus, PaymentStatus, StoreSettings, CarouselSlide, SpotlightBanner } from '../types';
 import { INITIAL_CATEGORIES, INITIAL_PRODUCTS, INITIAL_CAROUSEL_SLIDES } from './seedData';
-import { generateUniqueProductSlug, slugify } from '../utils/slug';
+import { generateUniqueProductSlug, slugify, findProductInCatalog } from '../utils/slug';
 
 const PRODUCTS_COL = 'products';
 const CATEGORIES_COL = 'categories';
@@ -77,7 +77,27 @@ export const DEFAULT_STORE_SETTINGS: StoreSettings = {
 export function getLocalProducts(): Product[] {
   try {
     const raw = localStorage.getItem(LOCAL_PRODUCTS_KEY);
-    return raw ? JSON.parse(raw) : [...INITIAL_PRODUCTS];
+    const list: Product[] = raw ? JSON.parse(raw) : [...INITIAL_PRODUCTS];
+    let needsUpdate = false;
+    const takenSlugs = new Set<string>();
+    const normalized = list.map(p => {
+      let s = p.slug ? slugify(p.slug) : slugify(p.name || 'product');
+      if (!s) s = `product-${p.id}`;
+      if (takenSlugs.has(s)) {
+        let count = 2;
+        while (takenSlugs.has(`${s}-${count}`)) count++;
+        s = `${s}-${count}`;
+      }
+      takenSlugs.add(s);
+      if (p.slug !== s) needsUpdate = true;
+      return { ...p, slug: s };
+    });
+    if (needsUpdate && typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(LOCAL_PRODUCTS_KEY, JSON.stringify(normalized));
+      } catch {}
+    }
+    return normalized;
   } catch {
     return [...INITIAL_PRODUCTS];
   }
@@ -395,31 +415,48 @@ export async function getProductById(id: string): Promise<Product | null> {
 }
 
 export async function getProductBySlug(slug: string): Promise<Product | null> {
+  if (!slug) return null;
   const normalizedSlug = slugify(slug);
-  try {
-    // 1. Check exact slug in Firestore
-    const q = query(collection(db, PRODUCTS_COL), where('slug', '==', normalizedSlug), limit(1));
-    const snap = await getDocs(q);
-    if (!snap.empty) {
-      const docData = snap.docs[0];
-      return { id: docData.id, ...docData.data() } as Product;
-    }
 
-    // 2. Fallback check local cache by slug, normalized slug, or id
-    const local = getLocalProducts().find(p =>
-      (p.slug && slugify(p.slug) === normalizedSlug) ||
-      p.slug === slug ||
-      p.id === slug
-    );
-    return local || null;
-  } catch {
-    const local = getLocalProducts().find(p =>
-      (p.slug && slugify(p.slug) === normalizedSlug) ||
-      p.slug === slug ||
-      p.id === slug
-    );
-    return local || null;
+  // 1. Instant check in local cache & initial catalog (0ms delay)
+  const localList = getLocalProducts();
+  const cached = findProductInCatalog(localList, slug) || findProductInCatalog(INITIAL_PRODUCTS, slug);
+  if (cached) {
+    return cached;
   }
+
+  // 2. High-speed targeted fetch from Firestore with strict 1.5s timeout
+  try {
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500));
+    const remoteQueryPromise = (async () => {
+      // Check slug field in Firestore
+      const q = query(collection(db, PRODUCTS_COL), where('slug', '==', normalizedSlug), limit(1));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const docData = snap.docs[0];
+        return { id: docData.id, ...docData.data() } as Product;
+      }
+      // Check document ID directly
+      const docRef = doc(db, PRODUCTS_COL, slug);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        return { id: docSnap.id, ...docSnap.data() } as Product;
+      }
+      return null;
+    })();
+
+    const remoteMatch = await Promise.race([remoteQueryPromise, timeoutPromise]);
+    if (remoteMatch) {
+      const merged = [...localList.filter(p => p.id !== remoteMatch.id), remoteMatch];
+      saveLocalProducts(merged);
+      return remoteMatch;
+    }
+  } catch (err) {
+    console.warn('Targeted getProductBySlug remote query fallback:', err);
+  }
+
+  // 3. Resilient fallback: fuzzy matching in initial products
+  return findProductInCatalog(INITIAL_PRODUCTS, slug);
 }
 
 export async function saveProduct(product: Partial<Product> & { id?: string }): Promise<string> {
@@ -665,13 +702,18 @@ export async function fetchUnifiedStoreData(): Promise<UnifiedStoreData> {
   };
 
   try {
-    // Single consolidated fetch: only 1 query per collection, executed in parallel
-    const [prodsSnap, catsSnap, slidesSnap, spotSnap, ordersSnap] = await Promise.all([
-      getDocs(collection(db, PRODUCTS_COL)).catch(() => null),
-      getDocs(collection(db, CATEGORIES_COL)).catch(() => null),
-      getDocs(collection(db, CAROUSEL_COL)).catch(() => null),
-      getDoc(doc(db, SETTINGS_COL, SPOTLIGHT_DOC)).catch(() => null),
-      getDocs(collection(db, ORDERS_COL)).catch(() => null)
+    // Single consolidated high-speed fetch with fast 2.5s timeouts so nothing blocks
+    const fastFetch = <T>(promise: Promise<T>, timeoutMs = 2500): Promise<T | null> =>
+      Promise.race([
+        promise.catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs))
+      ]);
+
+    const [prodsSnap, catsSnap, slidesSnap, spotSnap] = await Promise.all([
+      fastFetch(getDocs(collection(db, PRODUCTS_COL)), 2500),
+      fastFetch(getDocs(collection(db, CATEGORIES_COL)), 2500),
+      fastFetch(getDocs(collection(db, CAROUSEL_COL)), 2500),
+      fastFetch(getDoc(doc(db, SETTINGS_COL, SPOTLIGHT_DOC)), 2500)
     ]);
 
     let finalProds = cachedProds;
@@ -748,12 +790,7 @@ export async function fetchUnifiedStoreData(): Promise<UnifiedStoreData> {
       saveLocalSpotlightBanner(finalSpotlight);
     }
 
-    let finalOrders = cachedOrders;
-    if (ordersSnap && !ordersSnap.empty) {
-      finalOrders = ordersSnap.docs.map(d => ({ id: d.id, ...d.data() } as Order));
-      finalOrders.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      saveLocalStoredOrders(finalOrders);
-    }
+    const finalOrders = cachedOrders;
 
     return {
       products: finalProds.filter(p => p.active !== false),

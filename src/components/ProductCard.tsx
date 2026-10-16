@@ -66,6 +66,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelect, com
           alt={product.name}
           className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500 ease-out"
           loading="lazy"
+          decoding="async"
         />
 
         {/* Badges */}

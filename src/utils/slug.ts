@@ -76,37 +76,114 @@ export function getProductUrl(product: { id: string; slug?: string }): string {
 /**
  * Extracts a product identifier (slug or ID) from current window location.
  * Supports:
- * - /products/:slug
- * - /products/:slug/
- * - /product/:slug
- * - ?product=:slugOrId
- * - ?prod=:slugOrId
- * - #product-:slugOrId
+ * - /products/:slug or /products/:slug/
+ * - /product/:slug or /product/:slug/
+ * - Subpaths like /store/products/:slug
+ * - Hash paths: #/products/:slug, #products/:slug, #product-:slug
+ * - Query parameters: ?product=:slugOrId, ?prod=:slugOrId, ?slug=:slugOrId
  */
 export function extractProductSlugFromLocation(
   pathname: string = typeof window !== 'undefined' ? window.location.pathname : '',
   search: string = typeof window !== 'undefined' ? window.location.search : '',
   hash: string = typeof window !== 'undefined' ? window.location.hash : ''
 ): string | null {
-  // 1. Check path /products/:slug or /product/:slug
-  const cleanPath = pathname.replace(/\/+$/, ''); // strip trailing slash
-  const pathMatch = cleanPath.match(/^\/(?:products|product)\/([^/?#]+)/i);
-  if (pathMatch && pathMatch[1]) {
-    return decodeURIComponent(pathMatch[1]);
-  }
-
-  // 2. Check query params ?product=... or ?prod=...
-  if (search) {
-    const params = new URLSearchParams(search);
-    const paramVal = params.get('product') || params.get('prod');
-    if (paramVal) {
-      return decodeURIComponent(paramVal);
+  // 1. Direct path check /(?:products|product)/:slug
+  if (pathname) {
+    const cleanPath = pathname.replace(/\/+$/, '');
+    const pathMatch = cleanPath.match(/(?:^|\/)(?:products|product)\/([^/?#]+)/i);
+    if (pathMatch && pathMatch[1]) {
+      return decodeURIComponent(pathMatch[1]).trim();
     }
   }
 
-  // 3. Check hash #product-...
-  if (hash && hash.startsWith('#product-')) {
-    return decodeURIComponent(hash.replace('#product-', ''));
+  // 2. Query parameter check ?product=... or ?prod=... or ?slug=...
+  if (search) {
+    const params = new URLSearchParams(search);
+    const paramVal = params.get('product') || params.get('prod') || params.get('slug');
+    if (paramVal) {
+      return decodeURIComponent(paramVal).trim();
+    }
+  }
+
+  // 3. Hash routing check: #/products/:slug or #products/:slug or #product-:slug
+  if (hash) {
+    const hashClean = hash.replace(/^#\/?/, '');
+    const hashPathMatch = hashClean.match(/(?:^|\/)(?:products|product)\/([^/?#]+)/i);
+    if (hashPathMatch && hashPathMatch[1]) {
+      return decodeURIComponent(hashPathMatch[1]).trim();
+    }
+    if (hash.startsWith('#product-')) {
+      return decodeURIComponent(hash.replace('#product-', '')).trim();
+    }
+    if (hash.startsWith('#prod-')) {
+      return decodeURIComponent(hash.replace('#', '')).trim();
+    }
+  }
+
+  return null;
+}
+
+/**
+ * High-speed resilient catalog lookup.
+ * Finds a product in memory with zero network delay using:
+ * 1. Normalized slug match
+ * 2. Case-insensitive slug match
+ * 3. Product ID match
+ * 4. Slugified product name match
+ * 5. Partial/fuzzy slug or name token match
+ */
+export function findProductInCatalog<T extends { id: string; slug?: string; name?: string }>(
+  products: T[],
+  identifier: string
+): T | null {
+  if (!identifier || !products || products.length === 0) return null;
+  const clean = identifier.trim();
+  const targetNorm = slugify(clean);
+  const targetLower = clean.toLowerCase();
+
+  // 1. Exact normalized slug
+  for (let i = 0; i < products.length; i++) {
+    const p = products[i];
+    if (p.slug && slugify(p.slug) === targetNorm) return p;
+  }
+
+  // 2. Exact raw slug case-insensitive
+  for (let i = 0; i < products.length; i++) {
+    const p = products[i];
+    if (p.slug && p.slug.toLowerCase() === targetLower) return p;
+  }
+
+  // 3. Exact ID match
+  for (let i = 0; i < products.length; i++) {
+    const p = products[i];
+    if (p.id && p.id.toLowerCase() === targetLower) return p;
+  }
+
+  // 4. Exact product name slugified
+  for (let i = 0; i < products.length; i++) {
+    const p = products[i];
+    if (p.name && slugify(p.name) === targetNorm) return p;
+  }
+
+  // 5. Substring slug match (e.g. "wireless-earbuds" matches "wireless-earbuds-pro")
+  for (let i = 0; i < products.length; i++) {
+    const p = products[i];
+    const pSlug = p.slug ? slugify(p.slug) : slugify(p.name || '');
+    if (pSlug && (pSlug.includes(targetNorm) || targetNorm.includes(pSlug))) {
+      return p;
+    }
+  }
+
+  // 6. Keywords match across name words
+  const words = targetNorm.split('-').filter(w => w.length > 2);
+  if (words.length > 0) {
+    for (let i = 0; i < products.length; i++) {
+      const p = products[i];
+      const pNameNorm = slugify(p.name || '');
+      if (words.every(w => pNameNorm.includes(w))) {
+        return p;
+      }
+    }
   }
 
   return null;

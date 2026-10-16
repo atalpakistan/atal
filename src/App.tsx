@@ -31,12 +31,15 @@ import {
   DEFAULT_SPOTLIGHT_BANNER,
   subscribeToCarouselSlides,
   subscribeToSpotlightBanner,
-  subscribeToOrders
+  subscribeToOrders,
+  getProductBySlug
 } from './services/storeService';
 import { Product, Category, Order, CarouselSlide, SpotlightBanner } from './types';
 import { INITIAL_CATEGORIES, INITIAL_PRODUCTS, INITIAL_CAROUSEL_SLIDES } from './services/seedData';
-import { extractProductSlugFromLocation, getProductUrl, slugify } from './utils/slug';
+import { extractProductSlugFromLocation, getProductUrl, slugify, findProductInCatalog } from './utils/slug';
 import { updateProductSeo, resetStoreSeo } from './utils/seo';
+import { ProductDetailSkeleton } from './components/ProductDetailSkeleton';
+import { ShoppingBag } from 'lucide-react';
 
 interface RouteState {
   view: 'home' | 'shop' | 'product-detail' | 'checkout' | 'order-confirmation' | 'admin' | 'about' | 'contact';
@@ -98,6 +101,7 @@ function parseLocationRoute(): RouteState {
 
 function MainApp() {
   const { isAdmin, isStaff } = useAuth();
+  const hasStaffOrAdminAccess = Boolean(isAdmin || isStaff);
 
   const initialRoute = React.useMemo(() => parseLocationRoute(), []);
 
@@ -108,16 +112,19 @@ function MainApp() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(() => {
     const slugOrId = initialRoute.productSlug || initialRoute.productId;
     if (slugOrId) {
-      const cached = getLocalProducts();
-      const allProds = cached && cached.length > 0 ? cached : INITIAL_PRODUCTS;
-      const targetSlug = slugify(slugOrId);
-      return allProds.find(p =>
-        (p.slug && slugify(p.slug) === targetSlug) ||
-        p.slug === slugOrId ||
-        p.id === slugOrId
-      ) || null;
+      const allProds = getLocalProducts();
+      return findProductInCatalog(allProds, slugOrId) || findProductInCatalog(INITIAL_PRODUCTS, slugOrId);
     }
     return null;
+  });
+  const [isResolvingProduct, setIsResolvingProduct] = useState<boolean>(() => {
+    const slugOrId = initialRoute.productSlug || initialRoute.productId;
+    if (initialRoute.view === 'product-detail' && slugOrId) {
+      const allProds = getLocalProducts();
+      const found = findProductInCatalog(allProds, slugOrId) || findProductInCatalog(INITIAL_PRODUCTS, slugOrId);
+      return !found;
+    }
+    return false;
   });
   const [confirmedOrder, setConfirmedOrder] = useState<Order | null>(null);
 
@@ -155,6 +162,31 @@ function MainApp() {
   const [spotlightBanner, setSpotlightBanner] = useState<SpotlightBanner>(() => getLocalSpotlightBanner());
   const [, setLoading] = useState(false);
 
+  // Fast-track targeted resolver for direct unique product URLs (/products/:slug)
+  useEffect(() => {
+    const slugOrId = initialRoute.productSlug || initialRoute.productId;
+    if (currentView === 'product-detail' && slugOrId && !selectedProduct) {
+      let isMounted = true;
+      setIsResolvingProduct(true);
+      getProductBySlug(slugOrId)
+        .then((prod) => {
+          if (isMounted && prod) {
+            setSelectedProduct(prod);
+            updateProductSeo(prod);
+          }
+        })
+        .finally(() => {
+          if (isMounted) {
+            setIsResolvingProduct(false);
+          }
+        });
+
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [currentView, initialRoute.productSlug, initialRoute.productId, selectedProduct]);
+
   // Load data: Single unified parallel pass with zero duplicates and non-blocking background seeding
   const loadData = useCallback(async () => {
     try {
@@ -169,15 +201,11 @@ function MainApp() {
         // If product page is requested, ensure fresh data is connected
         const targetSlugOrId = initialRoute.productSlug || initialRoute.productId;
         if (targetSlugOrId && !selectedProduct) {
-          const targetNorm = slugify(targetSlugOrId);
-          const matched = data.products.find(p =>
-            (p.slug && slugify(p.slug) === targetNorm) ||
-            p.slug === targetSlugOrId ||
-            p.id === targetSlugOrId
-          );
+          const matched = findProductInCatalog(data.products, targetSlugOrId);
           if (matched) {
             setSelectedProduct(matched);
             updateProductSeo(matched);
+            setIsResolvingProduct(false);
           }
         } else if (selectedProduct) {
           const fresh = data.products.find(p => p.id === selectedProduct.id);
@@ -216,18 +244,21 @@ function MainApp() {
       }
     });
 
-    const unsubOrders = subscribeToOrders((updatedOrders) => {
-      if (updatedOrders) {
-        setOrders(updatedOrders);
-      }
-    });
+    let unsubOrders = () => {};
+    if (hasStaffOrAdminAccess) {
+      unsubOrders = subscribeToOrders((updatedOrders) => {
+        if (updatedOrders) {
+          setOrders(updatedOrders);
+        }
+      });
+    }
 
     return () => {
       unsubCarousel();
       unsubSpotlight();
       unsubOrders();
     };
-  }, [loadData]);
+  }, [loadData, hasStaffOrAdminAccess]);
 
   // Derived sections (From active customer catalog)
   const featuredProducts = products.filter(p => p.featured);
@@ -278,7 +309,8 @@ function MainApp() {
   const handleSelectProduct = (prod: Product, pushHistory = true) => {
     setSelectedProduct(prod);
     setCurrentView('product-detail');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setIsResolvingProduct(false);
+    window.scrollTo({ top: 0, behavior: 'instant' });
     updateProductSeo(prod);
 
     if (pushHistory) {
@@ -292,11 +324,18 @@ function MainApp() {
   };
 
   const handleSelectProductById = (slugOrId: string) => {
-    const targetNorm = slugify(slugOrId);
-    const prod = products.find(p => (p.slug && slugify(p.slug) === targetNorm) || p.slug === slugOrId || p.id === slugOrId) ||
-                 INITIAL_PRODUCTS.find(p => (p.slug && slugify(p.slug) === targetNorm) || p.slug === slugOrId || p.id === slugOrId);
+    const prod = findProductInCatalog(products, slugOrId) ||
+                 findProductInCatalog(INITIAL_PRODUCTS, slugOrId);
     if (prod) {
       handleSelectProduct(prod, true);
+    } else {
+      setIsResolvingProduct(true);
+      setCurrentView('product-detail');
+      getProductBySlug(slugOrId)
+        .then(p => {
+          if (p) handleSelectProduct(p, true);
+        })
+        .finally(() => setIsResolvingProduct(false));
     }
   };
 
@@ -304,18 +343,28 @@ function MainApp() {
   useEffect(() => {
     const handlePopState = () => {
       const route = parseLocationRoute();
-      const slugOrId = route.productSlug || route.productId;
-      if (route.view === 'product-detail' && slugOrId) {
-        const targetNorm = slugify(slugOrId);
-        const prod = products.find(p => (p.slug && slugify(p.slug) === targetNorm) || p.slug === slugOrId || p.id === slugOrId) ||
-                     INITIAL_PRODUCTS.find(p => (p.slug && slugify(p.slug) === targetNorm) || p.slug === slugOrId || p.id === slugOrId);
-        if (prod) {
-          handleSelectProduct(prod, false);
-          return;
-        } else {
-          setSelectedProduct(null);
-          setCurrentView('product-detail');
-          return;
+      setCurrentView(route.view);
+
+      if (route.view === 'product-detail') {
+        const slugOrId = route.productSlug || route.productId;
+        if (slugOrId) {
+          const allProds = getLocalProducts();
+          const prod = findProductInCatalog(allProds, slugOrId) ||
+                       findProductInCatalog(products, slugOrId) ||
+                       findProductInCatalog(INITIAL_PRODUCTS, slugOrId);
+          if (prod) {
+            handleSelectProduct(prod, false);
+            return;
+          } else {
+            setIsResolvingProduct(true);
+            setSelectedProduct(null);
+            getProductBySlug(slugOrId)
+              .then(p => {
+                if (p) handleSelectProduct(p, false);
+              })
+              .finally(() => setIsResolvingProduct(false));
+            return;
+          }
         }
       }
       handleNavigate(route.view, route.category, route.subcategory, false);
@@ -343,8 +392,6 @@ function MainApp() {
     setCustomerAuthMode(mode);
     setCustomerAuthModalOpen(true);
   };
-
-  const hasStaffOrAdminAccess = isAdmin || isStaff;
 
   return (
     <div className="min-h-screen bg-stone-50/50 flex flex-col justify-between selection:bg-stone-900 selection:text-white">
@@ -420,16 +467,31 @@ function MainApp() {
                 }
               }}
             />
+          ) : isResolvingProduct ? (
+            <ProductDetailSkeleton onBack={() => handleNavigate('shop')} />
           ) : (
             <div className="max-w-4xl mx-auto px-4 py-24 text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-stone-100 flex items-center justify-center text-stone-400">
+                <ShoppingBag className="w-8 h-8" />
+              </div>
               <h2 className="text-2xl font-bold text-stone-900 font-serif-display mb-2">Product Not Found</h2>
-              <p className="text-stone-600 text-sm mb-6">The requested product could not be located in our catalog.</p>
-              <button
-                onClick={() => handleNavigate('shop')}
-                className="px-6 py-2.5 bg-stone-950 text-white rounded-xl text-xs font-bold hover:bg-stone-850 transition cursor-pointer"
-              >
-                Return to Catalog
-              </button>
+              <p className="text-stone-600 text-sm mb-6 max-w-md mx-auto">
+                The requested product could not be located in our catalog. It may have been moved, renamed, or is temporarily out of stock.
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={() => handleNavigate('shop')}
+                  className="px-6 py-2.5 bg-stone-950 text-white rounded-xl text-xs font-bold hover:bg-stone-850 transition cursor-pointer"
+                >
+                  Explore All Products
+                </button>
+                <button
+                  onClick={() => handleNavigate('home')}
+                  className="px-6 py-2.5 bg-white border border-stone-200 text-stone-800 rounded-xl text-xs font-bold hover:bg-stone-50 transition cursor-pointer"
+                >
+                  Return to Home
+                </button>
+              </div>
             </div>
           )
         )}

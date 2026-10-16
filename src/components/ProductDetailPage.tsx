@@ -254,6 +254,8 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
             <img
               src={selectedImage}
               alt={product.name}
+              fetchPriority="high"
+              decoding="async"
               className="w-full h-full object-cover object-center transition-all duration-300 group-hover:scale-102"
             />
             {discountPercentage > 0 && (
@@ -311,6 +313,8 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                     <img
                       src={img}
                       alt={`${product.name} view ${idx + 1}`}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover"
                     />
                     <span className="absolute bottom-1 right-1 text-[9px] font-bold px-1 py-0.2 bg-stone-900/80 text-white rounded">
